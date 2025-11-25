@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<trace>
+  <!-- Tareas habilitadas -->
+  <enabled_tasks>
+    <task enabled="yes" name="openmp"/>
+    <task enabled="yes" name="pthread"/>
+  </enabled_tasks>
+  
+  <!-- Configuración de OpenMP -->
+  <openmp enabled="yes">
+    <trace_io enabled="no"/>
+    <trace_region enabled="yes"/>
+    <trace_loop enabled="yes"/>
+    <trace_wait_clause enabled="yes"/>
+    <trace_taskloop enabled="yes"/>
+    <trace_task enabled="yes"/>
+    <trace_lock enabled="yes"/>
+    <trace_deps enabled="yes"/>
+  </openmp>
+  
+  <!-- Sampling deshabilitado (usar solo instrumentación) -->
+  <sampling enabled="no"/>
+  
+  <!-- MPI deshabilitado (no lo usamos) -->
+  <mpi enabled="no"/>
+  
+  <!-- Directorio y prefijo de salida -->
+  <output_dir>./traces</output_dir>
+  <output_prefix>nw_trace</output_prefix>
+  
+  <!-- Configuración de buffers -->
+  <buffer_size>100MB</buffer_size>
+  <buffer_max_size>500MB</buffer_max_size>
+</trace>
+

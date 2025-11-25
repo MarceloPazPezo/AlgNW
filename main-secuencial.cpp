@@ -1,12 +1,12 @@
 /**
  * @file main-secuencial.cpp
- * @brief Programa independiente para ejecutar alineamiento Needleman-Wunsch
+ * @brief Programa para ejecutar el algoritmo Needleman-Wunsch de forma secuencial
  * 
  * Uso:
- *   ./main-secuencial -f archivo.fasta -p <match> <mismatch> <gap> -o salida.csv
+ *   ./bin/main-secuencial -f archivo.fasta -p <match> <mismatch> <gap> [-o salida.csv]
  * 
  * Ejemplo:
- *   ./main-secuencial -f data/test.fasta -p 2 0 -2 -o resultado-test.csv
+ *   ./bin/main-secuencial -f datos/test.fasta -p 2 0 -2 -o resultado.csv
  */
 
 #include <iostream>
@@ -14,46 +14,29 @@
 #include <string>
 #include <fstream>
 #include <vector>
-#include <chrono>
-#include <algorithm>
-#include <cstdlib>
-#include <cstring>
-
-// Incluir headers del proyecto
 #include "tipos.h"
 #include "puntuacion.h"
 #include "secuencial.h"
 #include "utilidades.h"
 
-// ============================================================================
-// FUNCIONES AUXILIARES SIMPLES
-// ============================================================================
-
-// Nota: leerFASTA y otras funciones están en utilidades.h/utilidades.cpp
-
 /**
- * @brief Guarda resultados en CSV usando ResultadoAlineamiento
+ * @brief Guarda resultados en CSV
  */
-void guardarCSVMejorado(const std::string& archivo_salida, 
-                        const std::string& archivo_fasta,
-                        const ResultadoAlineamiento& resultado,
-                        int match, int mismatch, int gap) {
+void guardarCSV(const std::string& archivo_salida,
+                const std::string& archivo_fasta,
+                const ResultadoAlineamiento& resultado,
+                int match, int mismatch, int gap) {
     
-    std::ofstream csv(archivo_salida, std::ios::app);
+    std::ofstream csv(archivo_salida);
     
     if (!csv.is_open()) {
         std::cerr << "Error: No se pudo abrir el archivo " << archivo_salida << "\n";
         return;
     }
     
-    // Escribir encabezado si el archivo está vacío
-    csv.seekp(0, std::ios::end);
-    bool archivo_vacio = csv.tellp() == 0;
-    
-    if (archivo_vacio) {
-        csv << "archivo_fasta,longitud_A,longitud_B,match,mismatch,gap";
-        csv << ",tiempo_init_ms,tiempo_llenado_ms,tiempo_traceback_ms,tiempo_total_ms,puntuacion\n";
-    }
+    // Escribir encabezado
+    csv << "archivo_fasta,longitud_A,longitud_B,match,mismatch,gap";
+    csv << ",tiempo_init_ms,tiempo_llenado_ms,tiempo_traceback_ms,tiempo_total_ms,puntuacion\n";
     
     // Escribir datos
     double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
@@ -77,15 +60,11 @@ void mostrarUso(const char* nombre_programa) {
     std::cout << "Opciones:\n";
     std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias (OBLIGATORIO)\n";
     std::cout << "  -p <match> <mismatch> <gap>   Parametros de puntuacion (OBLIGATORIO)\n";
-    std::cout << "                          match:    puntuacion por coincidencia (ej: 2)\n";
-    std::cout << "                          mismatch: puntuacion por sustitucion (ej: 0)\n";
-    std::cout << "                          gap:      penalidad por gap (ej: -2)\n";
-    std::cout << "  -o <archivo.csv>      Archivo de salida CSV (por defecto: resultado.csv)\n";
+    std::cout << "  -o <archivo.csv>      Archivo de salida CSV [default: resultado.csv]\n";
     std::cout << "  -h, --help           Mostrar esta ayuda\n\n";
     std::cout << "Ejemplos:\n";
     std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2 -o resultado-test.csv\n";
-    std::cout << "  " << nombre_programa << " -f data/protein.fasta -p 5 -4 -10\n\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2 -o resultado.csv\n";
 }
 
 /**
@@ -153,26 +132,26 @@ int main(int argc, char* argv[]) {
     // Crear configuración de alineamiento
     ConfiguracionAlineamiento config(match, mismatch, gap, false);
     
-    // Ejecutar alineamiento usando alineamientoNWR
-    std::cout << "Ejecutando alineamiento...\n";
+    // Ejecutar alineamiento secuencial
+    std::cout << "Ejecutando alineamiento secuencial...\n";
+    auto inicio = std::chrono::high_resolution_clock::now();
     ResultadoAlineamiento resultado = alineamientoNWR(secA, secB, config);
+    auto fin = std::chrono::high_resolution_clock::now();
+    
+    double tiempo_total = std::chrono::duration<double, std::milli>(fin - inicio).count();
     
     // Mostrar resultados
-    double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
+    std::cout << "\n=== RESULTADOS ===\n";
+    std::cout << "Puntuacion: " << resultado.puntuacion << "\n";
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "Tiempo de inicializacion: " << resultado.tiempo_fase1_ms << " ms\n";
+    std::cout << "Tiempo de llenado de matriz: " << resultado.tiempo_fase2_ms << " ms\n";
+    std::cout << "Tiempo de traceback: " << resultado.tiempo_fase3_ms << " ms\n";
+    std::cout << "Tiempo total: " << tiempo_total << " ms\n";
     
-    std::cout << "\nResultados:\n";
-    std::cout << "  Puntuacion: " << resultado.puntuacion << "\n";
-    std::cout << "  Tiempos:\n";
-    std::cout << "    Inicializacion: " << std::fixed << std::setprecision(4) << resultado.tiempo_fase1_ms << " ms\n";
-    std::cout << "    Llenado:        " << resultado.tiempo_fase2_ms << " ms\n";
-    std::cout << "    Traceback:      " << resultado.tiempo_fase3_ms << " ms\n";
-    std::cout << "    Total:          " << tiempo_total << " ms\n";
-    
-    // Guardar en CSV
-    std::cout << "\nGuardando resultados en " << archivo_salida << "...\n";
-    guardarCSVMejorado(archivo_salida, archivo_fasta, resultado, match, mismatch, gap);
-    
-    std::cout << "Listo!\n";
+    // Guardar resultados en CSV
+    guardarCSV(archivo_salida, archivo_fasta, resultado, match, mismatch, gap);
+    std::cout << "\nResultados guardados en: " << archivo_salida << "\n";
     
     return 0;
 }

@@ -59,7 +59,37 @@ Generar un lote de secuencias para benchmarking:
 ```
 Esto generará múltiples archivos con diferentes longitudes y similitudes.
 
-### Script de Generación de Datos (`generar_datos.sh`)
+### Scripts de Generación de Datos
+
+Hay tres scripts para generar datos según el tipo de análisis:
+
+#### 1. `generar_casos_notebook.sh` - Casos para Notebook (poca RAM)
+
+Genera casos pequeños diseñados para notebooks con poca memoria y análisis con Extrae/Paraver:
+- **Longitudes**: 500, 1k, 2k, 5k, 10k
+- **Uso**: Análisis detallado con herramientas de profiling
+- **Memoria requerida**: < 1 GB
+
+```bash
+./generar_casos_notebook.sh
+./generar_casos_notebook.sh -s 0.85 --solo-dna
+```
+
+#### 2. `generar_casos_servidor.sh` - Casos para Servidor (mucha RAM)
+
+Genera casos grandes para análisis completo en servidor:
+- **Longitudes**: 20k, 30k, 50k, 75k, 100k, 125k, 150k
+- **Uso**: Benchmark completo y análisis de escalabilidad
+- **Memoria requerida**: Hasta ~36 GB (para 150k)
+
+```bash
+./generar_casos_servidor.sh
+./generar_casos_servidor.sh -s 0.85 --solo-dna
+```
+
+⚠️ **ADVERTENCIA**: El caso más grande (150k) requiere aproximadamente 36 GB de RAM.
+
+#### 3. `generar_datos.sh` - Generación General
 
 Script de conveniencia para generar automáticamente archivos FASTA de ADN y proteínas con las longitudes comúnmente usadas para benchmarking.
 
@@ -406,6 +436,57 @@ AlgNW/
 ├── resultados_benchmark/ # Directorio de resultados CSV (generado)
 └── graficos_benchmark/   # Directorio de gráficos generados (generado)
 ```
+
+## Scripts de Ejecución de Benchmarks
+
+### Para Notebook (casos pequeños)
+
+```bash
+# Generar casos
+./generar_casos_notebook.sh
+
+# Ejecutar benchmark sin Extrae
+./ejecutar_benchmark_notebook.sh datos 3 no
+
+# Ejecutar benchmark con Extrae/Paraver
+./ejecutar_benchmark_notebook.sh datos 3 si
+```
+
+### Para Servidor (casos grandes)
+
+```bash
+# Generar casos (con advertencia de memoria)
+./generar_casos_servidor.sh
+
+# Ejecutar benchmark completo
+./ejecutar_benchmark_servidor.sh datos 5
+```
+
+⚠️ **Nota**: El script de servidor muestra advertencias de memoria antes de ejecutar.
+
+## Análisis de Rendimiento
+
+Para análisis detallado del comportamiento de las implementaciones paralelas, hay varias herramientas disponibles:
+
+### Opciones Disponibles
+
+1. **Intel VTune Profiler** ⭐ (Recomendado para Windows)
+   ```bash
+   ./ejecutar_vtune.sh datos/test_500.fasta threading 1
+   ```
+
+2. **Extrae/Paraver** (Linux, Open Source)
+   ```bash
+   ./ejecutar_extrae.sh datos/test_500.fasta antidiagonal_static 1
+   paraver traces/nw_trace_*.prv
+   ```
+
+3. **perf + FlameGraph** (Linux, simple y rápido)
+   ```bash
+   ./ejecutar_perf.sh datos/test_500.fasta 1
+   ```
+
+Ver `HERRAMIENTAS_ANALISIS.md` para comparación completa de todas las herramientas disponibles.
 
 ## Notas
 

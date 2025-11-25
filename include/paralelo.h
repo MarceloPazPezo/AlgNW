@@ -6,143 +6,144 @@
 
 /**
  * @file paralelo.h
- * @brief Implementaciones paralelas de Needleman-Wunsch con OpenMP.
- * 
- * Este archivo contiene diferentes estrategias de paralelización:
- * 1. Antidiagonales (wavefront celda por celda)
- * 2. Bloques (tiling/blocking)
- * 3. Tareas (tasks con dependencias)
+ * @brief Interfaz pública para las implementaciones paralelas de Needleman–Wunsch.
  */
-
-// ============================================================================
-// ESTRATEGIA 1: ANTIDIAGONALES (WAVEFRONT)
-// ============================================================================
 
 /**
- * @brief NW con matriz de traceback paralelo por antidiagonales.
- * 
- * Procesa la matriz por antidiagonales (wavefront). Las celdas en la misma
- * antidiagonal son independientes y se calculan en paralelo.
- * 
- * Características:
- * - Paralelismo variable (1 a min(m,n) celdas por onda)
- * - Muchas sincronizaciones (m+n-1 barreras)
- * - Simple de implementar
- * - Bueno para matrices pequeñas-medianas
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @return ResultadoAlineamiento con tiempos instrumentados
+ * @brief Ejecuta Needleman–Wunsch en paralelo usando estrategia de antidiagonales.
+ *
+ * Esta implementación procesa las antidiagonales de la matriz en orden, pero
+ * paraleliza el procesamiento de los elementos dentro de cada antidiagonal.
+ * Los elementos de una antidiagonal k (donde i+j=k) pueden procesarse en paralelo
+ * ya que solo dependen de elementos de antidiagonales anteriores.
+ *
+ * @param secA Secuencia A (string) a alinear.
+ * @param secB Secuencia B (string) a alinear.
+ * @param config Configuración de alineamiento (puntuación, verbose, etc.).
+ * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados.
  */
-ResultadoAlineamiento alineamientoNWP_OpenMP_Antidiag(
+ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     const std::string& secA,
     const std::string& secB,
     const ConfiguracionAlineamiento& config
 );
 
 /**
- * @brief NW con recálculo de traceback paralelo por antidiagonales.
- * 
- * Versión optimizada en memoria. Solo almacena matriz de puntuaciones.
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @return ResultadoAlineamiento con tiempos instrumentados
+ * @brief Ejecuta Needleman–Wunsch en paralelo usando estrategia de bloques.
+ *
+ * Esta implementación divide la matriz en bloques y los procesa en paralelo.
+ * Los bloques se procesan respetando las dependencias: un bloque solo puede
+ * procesarse cuando sus bloques dependientes (arriba, izquierda, diagonal) están listos.
+ *
+ * @param secA Secuencia A (string) a alinear.
+ * @param secB Secuencia B (string) a alinear.
+ * @param config Configuración de alineamiento (puntuación, verbose, etc.).
+ * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados.
  */
-ResultadoAlineamiento alineamientoNWR_OpenMP_Antidiag(
-    const std::string& secA,
-    const std::string& secB,
-    const ConfiguracionAlineamiento& config
-);
-
-// ============================================================================
-// ESTRATEGIA 2: BLOQUES (TILING)
-// ============================================================================
-
-/**
- * @brief NW con matriz de traceback paralelo por bloques.
- * 
- * Divide la matriz en bloques (tiles) y los procesa por antidiagonales de
- * bloques. Bloques en la misma antidiagonal se calculan en paralelo.
- * 
- * Características:
- * - Pocas sincronizaciones (mucho menos que antidiagonales)
- * - Excelente localidad de cache
- * - Paralelismo más estable
- * - Óptimo para matrices grandes
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @param tile_size Tamaño del bloque (por defecto 64)
- * @return ResultadoAlineamiento con tiempos instrumentados
- */
-ResultadoAlineamiento alineamientoNWP_OpenMP_Bloques(
-    const std::string& secA,
-    const std::string& secB,
-    const ConfiguracionAlineamiento& config,
-    int tile_size = 64
-);
-
-/**
- * @brief NW con recálculo de traceback paralelo por bloques.
- * 
- * Versión optimizada en memoria con estrategia de bloques.
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @param tile_size Tamaño del bloque (por defecto 64)
- * @return ResultadoAlineamiento con tiempos instrumentados
- */
-ResultadoAlineamiento alineamientoNWR_OpenMP_Bloques(
-    const std::string& secA,
-    const std::string& secB,
-    const ConfiguracionAlineamiento& config,
-    int tile_size = 64
-);
-
-// ============================================================================
-// ESTRATEGIA 3: TAREAS (TASKS)
-// ============================================================================
-
-/**
- * @brief NW con matriz de traceback usando tareas de OpenMP.
- * 
- * Usa el sistema de tareas con dependencias de OpenMP 4.0+. Cada fila
- * se procesa como una tarea que depende de la fila anterior.
- * 
- * Características:
- * - Expresión natural de dependencias
- * - Runtime de OpenMP gestiona sincronización
- * - Overhead del sistema de tareas
- * - Requiere OpenMP 4.0+
- * - Útil para prototipado rápido
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @return ResultadoAlineamiento con tiempos instrumentados
- */
-ResultadoAlineamiento alineamientoNWP_OpenMP_Tasks(
+ResultadoAlineamiento alineamientoNWParaleloBloques(
     const std::string& secA,
     const std::string& secB,
     const ConfiguracionAlineamiento& config
 );
 
 /**
- * @brief NW con recálculo de traceback usando tareas de OpenMP.
- * 
- * Versión optimizada en memoria con estrategia de tareas.
- * 
- * @param secA Secuencia A
- * @param secB Secuencia B
- * @param config Configuración de alineamiento
- * @return ResultadoAlineamiento con tiempos instrumentados
+ * @brief Ejecuta Needleman–Wunsch en paralelo combinando antidiagonales y bloques.
+ *
+ * Esta implementación combina ambas estrategias: procesa antidiagonales en orden,
+ * pero dentro de cada antidiagonal divide el trabajo en bloques que se procesan
+ * en paralelo. Esto permite un mejor balanceo de carga y aprovechamiento de la
+ * caché.
+ *
+ * @param secA Secuencia A (string) a alinear.
+ * @param secB Secuencia B (string) a alinear.
+ * @param config Configuración de alineamiento (puntuación, verbose, etc.).
+ * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados.
  */
-ResultadoAlineamiento alineamientoNWR_OpenMP_Tasks(
+ResultadoAlineamiento alineamientoNWParaleloCombinado(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+// ============================================================================
+// ESTRATEGIA: ANTIDIAGONALES CON DIFERENTES SCHEDULES
+// ============================================================================
+
+ResultadoAlineamiento alineamientoNWParaleloAntidiagonalStatic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloAntidiagonalDynamic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloAntidiagonalGuided(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloAntidiagonalAuto(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+// ============================================================================
+// ESTRATEGIA: BLOQUES CON DIFERENTES SCHEDULES
+// ============================================================================
+
+ResultadoAlineamiento alineamientoNWParaleloBloquesStatic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloBloquesDynamic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloBloquesGuided(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloBloquesAuto(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+// ============================================================================
+// ESTRATEGIA: COMBINADO CON DIFERENTES SCHEDULES
+// ============================================================================
+
+ResultadoAlineamiento alineamientoNWParaleloCombinadoStatic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloCombinadoDynamic(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloCombinadoGuided(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config
+);
+
+ResultadoAlineamiento alineamientoNWParaleloCombinadoAuto(
     const std::string& secA,
     const std::string& secB,
     const ConfiguracionAlineamiento& config

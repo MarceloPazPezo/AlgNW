@@ -4,6 +4,7 @@ CXX = g++
 
 # Flags de compilación
 CXXFLAGS = -O3 -Wall -std=c++11 -Iinclude
+CXXFLAGS_PARALELO = $(CXXFLAGS) -fopenmp
 
 # Directorios
 SRC_DIR = src
@@ -16,11 +17,14 @@ SECUENCIAL_SRCS = main-secuencial.cpp \
                   $(SRC_DIR)/puntuacion.cpp \
                   $(SRC_DIR)/utilidades.cpp
 
-GEN_SRCS = main-gen-secuencia.cpp \
-           $(SRC_DIR)/generador_secuencias.cpp
+BENCHMARK_SRCS = main-benchmark.cpp \
+                 $(SRC_DIR)/secuencial.cpp \
+                 $(SRC_DIR)/paralelo.cpp \
+                 $(SRC_DIR)/puntuacion.cpp \
+                 $(SRC_DIR)/utilidades.cpp
 
 # Objetivos principales
-all: $(BIN_DIR)/main-secuencial $(BIN_DIR)/main-gen-secuencia
+all: $(BIN_DIR)/main-secuencial $(BIN_DIR)/main-benchmark
 
 # Crear directorio bin si no existe
 $(BIN_DIR):
@@ -30,9 +34,9 @@ $(BIN_DIR):
 $(BIN_DIR)/main-secuencial: $(SECUENCIAL_SRCS) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $(SECUENCIAL_SRCS)
 
-# Compilar main-gen-secuencia
-$(BIN_DIR)/main-gen-secuencia: $(GEN_SRCS) | $(BIN_DIR)
-	$(CXX) $(CXXFLAGS) -o $@ $(GEN_SRCS)
+# Compilar main-benchmark
+$(BIN_DIR)/main-benchmark: $(BENCHMARK_SRCS) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS_PARALELO) -o $@ $(BENCHMARK_SRCS)
 
 # Limpiar archivos compilados
 clean:
@@ -54,7 +58,7 @@ help:
 	@echo ""
 	@echo "Programas generados:"
 	@echo "  bin/main-secuencial      - Alineamiento Needleman-Wunsch secuencial"
-	@echo "  bin/main-gen-secuencia   - Generador de secuencias biológicas"
+	@echo "  bin/main-benchmark       - Benchmark comparativo de todas las implementaciones"
 
 .PHONY: all clean rebuild help
 

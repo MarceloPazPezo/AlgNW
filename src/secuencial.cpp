@@ -3,7 +3,6 @@
 #include "utilidades.h"
 #include <vector>
 #include <algorithm>
-#include <iostream>
 #include <chrono>
 
 /**
@@ -16,24 +15,6 @@ ResultadoAlineamiento alineamientoNWP(const std::string& secA, const std::string
                                                 const ConfiguracionAlineamiento& config) {
     int m = secA.length();
     int n = secB.length();
-    
-    // Verificar límites de memoria
-    if (!verificarLimitesSecuencia(m, n, true)) {
-        std::cerr << "Alineamiento cancelado por límites de memoria.\n";
-        return ResultadoAlineamiento("", "", 0, 0.0, 0.0, 0.0);
-    }
-    
-    // Mostrar información si verbose está activado
-    if (config.verbose) {
-        std::cout << "=== CONFIGURACIÓN DE PUNTUACIÓN ===\n";
-        std::cout << "Matriz: " << obtenerNombreMatriz(config.puntuacion.tipo) << "\n";
-        std::cout << "Penalidad de gap: " << obtenerPenalidadGap(config.puntuacion) << "\n\n";
-        
-        InfoMemoria infoMem = calcularUsoMemoria(m, n, true);
-        imprimirInfoMemoria(infoMem);
-        
-        std::cout << "=== FASE 1: INICIALIZACIÓN ===\n";
-    }
     
     // Crear matrices
     auto t_inicio_f1 = std::chrono::high_resolution_clock::now();
@@ -54,11 +35,6 @@ ResultadoAlineamiento alineamientoNWP(const std::string& secA, const std::string
     }
     auto t_fin_f1 = std::chrono::high_resolution_clock::now();
     double tiempo_fase1_ms = std::chrono::duration<double, std::milli>(t_fin_f1 - t_inicio_f1).count();
-    
-    if (config.verbose) {
-        std::cout << "Matriz inicializada. Dimensiones: " << (m+1) << "x" << (n+1) << "\n";
-        std::cout << "\n=== FASE 2: CÁLCULO DE PUNTUACIONES ===\n";
-    }
     
     // Llenar la matriz
     auto t_inicio_f2 = std::chrono::high_resolution_clock::now();
@@ -82,11 +58,6 @@ ResultadoAlineamiento alineamientoNWP(const std::string& secA, const std::string
     }
     auto t_fin_f2 = std::chrono::high_resolution_clock::now();
     double tiempo_fase2_ms = std::chrono::duration<double, std::milli>(t_fin_f2 - t_inicio_f2).count();
-
-    if (config.verbose) {
-        std::cout << "Matriz de puntuaciones calculada. Puntuación final: " << F[m][n] << "\n";
-        std::cout << "\n=== FASE 3: TRACEBACK CON PUNTEROS ===\n";
-    }
     
     auto t_inicio_f3 = std::chrono::high_resolution_clock::now();
     std::string alineadaA = "";
@@ -112,11 +83,6 @@ ResultadoAlineamiento alineamientoNWP(const std::string& secA, const std::string
     auto t_fin_f3 = std::chrono::high_resolution_clock::now();
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_f3 - t_inicio_f3).count();
 
-    if (config.verbose) {
-        std::cout << "Traceback completado.\n";
-        std::cout << "Tiempos: llenado=" << tiempo_fase2_ms << " ms, traceback=" << tiempo_fase3_ms << " ms\n";
-    }
-
     return ResultadoAlineamiento(alineadaA, alineadaB, F[m][n], tiempo_fase2_ms, tiempo_fase3_ms, tiempo_fase1_ms);
 }
 
@@ -131,25 +97,7 @@ ResultadoAlineamiento alineamientoNWR(const std::string& secA, const std::string
     int m = secA.length();
     int n = secB.length();
     
-    // Verificar límites de memoria
-    if (!verificarLimitesSecuencia(m, n, true)) {
-        std::cerr << "⚠️  Alineamiento cancelado por límites de memoria.\n";
-        return ResultadoAlineamiento("", "", 0, 0.0, 0.0, 0.0);
-    }
-    
-    // Mostrar información si verbose está activado
-    if (config.verbose) {
-        std::cout << "=== CONFIGURACIÓN DE PUNTUACIÓN ===\n";
-        std::cout << "Matriz: " << obtenerNombreMatriz(config.puntuacion.tipo) << "\n";
-        std::cout << "Penalidad de gap: " << obtenerPenalidadGap(config.puntuacion) << "\n\n";
-        
-        InfoMemoria infoMem = calcularUsoMemoria(m, n, false);
-        imprimirInfoMemoria(infoMem);
-        
-        std::cout << "=== FASE 1: INICIALIZACIÓN ===\n";
-    }
-    
-    // Crear solo matriz de puntuaciones
+    // Crear matriz de puntuaciones
     auto t_inicio_fase1 = std::chrono::high_resolution_clock::now();
     std::vector<std::vector<int>> F(m + 1, std::vector<int>(n + 1, 0));
 
@@ -165,11 +113,6 @@ ResultadoAlineamiento alineamientoNWR(const std::string& secA, const std::string
     }
     auto t_fin_fase1 = std::chrono::high_resolution_clock::now();
     double tiempo_fase1_ms = std::chrono::duration<double, std::milli>(t_fin_fase1 - t_inicio_fase1).count();
-
-    if (config.verbose) {
-        std::cout << "Matriz inicializada. Dimensiones: " << (m+1) << "x" << (n+1) << "\n";
-        std::cout << "\n=== FASE 2: CÁLCULO DE PUNTUACIONES ===\n";
-    }
     
     // Llenar la matriz
     auto t_inicio_fase2 = std::chrono::high_resolution_clock::now();
@@ -184,11 +127,6 @@ ResultadoAlineamiento alineamientoNWR(const std::string& secA, const std::string
     }
     auto t_fin_fase2 = std::chrono::high_resolution_clock::now();
     double tiempo_fase2_ms = std::chrono::duration<double, std::milli>(t_fin_fase2 - t_inicio_fase2).count();
-
-    if (config.verbose) {
-        std::cout << "Matriz de puntuaciones calculada. Puntuación final: " << F[m][n] << "\n";
-        std::cout << "\n=== FASE 3: TRACEBACK CON RECÁLCULO ===\n";
-    }
     
     auto t_inicio_fase3 = std::chrono::high_resolution_clock::now();
     std::string alineadaA = "";
@@ -227,11 +165,6 @@ ResultadoAlineamiento alineamientoNWR(const std::string& secA, const std::string
 
     auto t_fin_fase3 = std::chrono::high_resolution_clock::now();
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_fase3 - t_inicio_fase3).count();
-
-    if (config.verbose) {
-        std::cout << "Traceback completado.\n";
-        std::cout << "Tiempos: llenado=" << tiempo_fase2_ms << " ms, traceback=" << tiempo_fase3_ms << " ms\n";
-    }
 
     return ResultadoAlineamiento(alineadaA, alineadaB, F[m][n], tiempo_fase2_ms, tiempo_fase3_ms, tiempo_fase1_ms);
 }
