@@ -31,8 +31,18 @@ echo ""
 # Verificar que el benchmark está compilado
 if [ ! -f "bin/main-benchmark" ]; then
     echo -e "${YELLOW}Compilando benchmark...${NC}"
-    make bin/main-benchmark
-    if [ $? -ne 0 ]; then
+    # Intentar con compilar.sh primero, luego con make si existe
+    if [ -f "./compilar.sh" ]; then
+        ./compilar.sh benchmark
+    elif command -v make &> /dev/null && [ -f "Makefile" ]; then
+        make bin/main-benchmark
+    else
+        echo -e "${RED}Error: No se encontró make ni compilar.sh${NC}"
+        echo "Ejecuta: ./compilar.sh benchmark"
+        exit 1
+    fi
+    
+    if [ ! -f "bin/main-benchmark" ]; then
         echo -e "${RED}Error al compilar${NC}"
         exit 1
     fi

@@ -92,8 +92,20 @@ fi
 # Verificar que el generador existe
 if [ ! -f "$GENERADOR" ]; then
     echo -e "${YELLOW}El generador no está compilado. Compilando...${NC}"
-    if ! make bin/main-gen-secuencia 2>/dev/null; then
+    # Intentar con compilar.sh primero, luego con make si existe
+    if [ -f "./compilar.sh" ]; then
+        ./compilar.sh generador
+    elif command -v make &> /dev/null && [ -f "Makefile" ]; then
+        make bin/main-gen-secuencia 2>/dev/null
+    else
+        # Compilar directamente
+        g++ -O3 -Wall -std=c++11 -Iinclude -o "$GENERADOR" \
+            main-gen-secuencia.cpp "$SRC_DIR/generador_secuencias.cpp" 2>/dev/null
+    fi
+    
+    if [ ! -f "$GENERADOR" ]; then
         echo -e "${RED}Error: No se pudo compilar el generador${NC}"
+        echo "Ejecuta: ./compilar.sh generador"
         exit 1
     fi
 fi

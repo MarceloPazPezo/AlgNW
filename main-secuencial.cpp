@@ -14,6 +14,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <chrono>
 #include "tipos.h"
 #include "puntuacion.h"
 #include "secuencial.h"

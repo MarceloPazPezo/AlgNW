@@ -154,6 +154,7 @@ int main(int argc, char* argv[]) {
     // Variables para parámetros
     std::string archivo_fasta = "";
     std::string archivo_salida = "benchmark.csv";
+    std::string metodo_seleccionado = ""; // [NEW] Variable para seleccionar método
     int match = 0, mismatch = 0, gap = 0;
     int repeticiones = 1;
     bool parametros_validos = false;
@@ -177,6 +178,9 @@ int main(int argc, char* argv[]) {
             mismatch = std::atoi(argv[++i]);
             gap = std::atoi(argv[++i]);
             parametros_validos = true;
+        }
+        else if ((arg == "-m" || arg == "--metodo") && i + 1 < argc) { // [NEW] Argumento -m
+            metodo_seleccionado = argv[++i];
         }
         else if (arg == "-h" || arg == "--help") {
             mostrarUso(argv[0]);
@@ -212,7 +216,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Secuencia A: " << secA.length() << " caracteres\n";
     std::cout << "Secuencia B: " << secB.length() << " caracteres\n";
     std::cout << "Parametros: match=" << match << ", mismatch=" << mismatch << ", gap=" << gap << "\n";
-    std::cout << "Repeticiones por metodo: " << repeticiones << "\n\n";
+    std::cout << "Repeticiones por metodo: " << repeticiones << "\n";
+    if (!metodo_seleccionado.empty()) {
+        std::cout << "Metodo seleccionado: " << metodo_seleccionado << "\n";
+    }
+    std::cout << "\n";
     
     // Crear configuración de alineamiento
     ConfiguracionAlineamiento config(match, mismatch, gap, false);
@@ -223,7 +231,7 @@ int main(int argc, char* argv[]) {
         std::function<ResultadoAlineamiento(const std::string&, const std::string&, const ConfiguracionAlineamiento&)> funcion;
     };
     
-    std::vector<MetodoPrueba> metodos = {
+    std::vector<MetodoPrueba> todos_metodos = {
         // Secuencial
         {"secuencial", alineamientoNWR},
         
@@ -245,6 +253,29 @@ int main(int argc, char* argv[]) {
         {"combinado_guided", alineamientoNWParaleloCombinadoGuided},
         {"combinado_auto", alineamientoNWParaleloCombinadoAuto}
     };
+
+    // Filtrar métodos si se seleccionó uno
+    std::vector<MetodoPrueba> metodos;
+    if (!metodo_seleccionado.empty()) {
+        bool encontrado = false;
+        for (const auto& m : todos_metodos) {
+            if (m.nombre == metodo_seleccionado) {
+                metodos.push_back(m);
+                encontrado = true;
+                break;
+            }
+        }
+        if (!encontrado) {
+            std::cerr << "Error: Metodo '" << metodo_seleccionado << "' no encontrado.\n";
+            std::cerr << "Metodos disponibles:\n";
+            for (const auto& m : todos_metodos) {
+                std::cerr << "  - " << m.nombre << "\n";
+            }
+            return 1;
+        }
+    } else {
+        metodos = todos_metodos;
+    }
     
     std::cout << "=== EJECUTANDO BENCHMARK ===\n";
     std::cout << "Metodos: " << metodos.size() << "\n";

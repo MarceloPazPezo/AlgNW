@@ -12,6 +12,11 @@ import os
 import glob
 import argparse
 from pathlib import Path
+# Intentamos usar Pillow para rotar imágenes cuando el usuario quiera versiones "giradas"
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 # Configurar estilo de gráficos
 sns.set_style("whitegrid")
@@ -80,9 +85,44 @@ def calcular_porcentajes(df):
     
     return df
 
+
+def ordenar_por_tipo_y_longitud(df):
+    """Ordena el DataFrame colocando primero las filas de tipo 'dna' (de menor a mayor longitud)
+    y luego las de tipo 'protein' (de menor a mayor longitud).
+    Devuelve una copia ordenada.
+    """
+    if df is None or len(df) == 0:
+        return df
+    tipo_order = {'dna': 0, 'protein': 1}
+    df_copy = df.copy()
+    df_copy['__tipo_ord'] = df_copy['tipo'].map(tipo_order).fillna(2)
+    df_copy = df_copy.sort_values(['__tipo_ord', 'longitud'], ascending=[True, True])
+    df_copy = df_copy.drop(columns=['__tipo_ord'])
+    return df_copy
+
+
+def _format_spanish_number(value, decimals=2):
+    """Formatea números con separador de miles '.' y separador decimal ',' (estilo español).
+    Por ejemplo: 352804.0 -> '352.804,00'
+    """
+    try:
+        if decimals == 0:
+            s = f"{value:,.0f}"
+        else:
+            s = f"{value:,.{decimals}f}"
+        # s usa coma como separador de miles y punto como decimal en locale C (ej: '352,804.00')
+        # Queremos '.' miles y ',' decimal -> intercambiamos
+        s = s.replace(',', 'X').replace('.', ',').replace('X', '.')
+        return s
+    except Exception:
+        return str(value)
+
 def grafico_porcentajes_apilados(df, output_dir):
     """Gráfico de barras apiladas mostrando porcentajes por fase"""
-    df_ordenado = df.sort_values('longitud')
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
+    # Añadir columna en segundos para facilitar lectura humana
+    df_ordenado = df_ordenado.copy()
+    df_ordenado['total_s'] = df_ordenado['total_ms'] / 1000.0
     
     fig, ax = plt.subplots(figsize=(16, 10))
     
@@ -121,8 +161,12 @@ def grafico_porcentajes_apilados(df, output_dir):
 
 def grafico_tiempos_absolutos(df, output_dir):
     """Gráfico de líneas mostrando tiempos absolutos por fase vs longitud"""
-    df_ordenado = df.sort_values('longitud')
-    
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
+    # Asegurar columna en segundos usada por los gráficos
+    df_ordenado = df_ordenado.copy()
+    if 'total_s' not in df_ordenado.columns:
+        df_ordenado['total_s'] = df_ordenado['total_ms'] / 1000.0
+
     fig, ax = plt.subplots(figsize=(14, 8))
     
     ax.plot(df_ordenado['longitud'], df_ordenado['init_ms'], 
@@ -151,7 +195,7 @@ def grafico_tiempos_absolutos(df, output_dir):
 
 def grafico_comparativo_fases(df, output_dir):
     """Gráfico comparativo mostrando cómo crece cada fase con el tamaño"""
-    df_ordenado = df.sort_values('longitud')
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
     
     fig, axes = plt.subplots(2, 2, figsize=(16, 12))
     fig.suptitle('Análisis Detallado de Tiempos por Fase', 
@@ -221,6 +265,313 @@ def grafico_comparativo_fases(df, output_dir):
                 dpi=300, bbox_inches='tight')
     plt.close()
     print(f"✓ Gráfico guardado: analisis_comparativo_fases.png")
+
+def grafico_tiempo_total_por_longitud(df, output_dir):
+    """Grafica el tiempo total (ms) en función de la longitud de entrada.
+    Se muestran puntos y líneas separadas por tipo (dna/protein). Escala log-log.
+    Genera versiones para publicación (onecol / twocol).
+    """
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    for tipo, marker, color in [('dna', 'o', '#2A9D8F'), ('protein', 's', '#E76F51')]:
+        subset = df_ordenado[df_ordenado['tipo'] == tipo]
+        if len(subset) == 0:
+            continue
+        # Robustecer: si no existe 'total_s', calcular a partir de 'total_ms'
+        if 'total_s' in subset.columns:
+            y_vals = subset['total_s']
+        else:
+            y_vals = subset['total_ms'] / 1000.0
+        ax.plot(subset['longitud'], y_vals, marker=marker, linestyle='-',
+                linewidth=2, markersize=6, label=tipo.capitalize(), color=color)
+
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel('Longitud de Secuencias (caracteres)', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Tiempo Total (s)', fontsize=12, fontweight='bold')
+    ax.set_title('Tiempo Total vs Longitud de Entrada', fontsize=14, fontweight='bold')
+    ax.grid(True, which='both', alpha=0.3)
+    ax.legend(fontsize=11)
+
+    plt.tight_layout()
+    mainfile = os.path.join(output_dir, 'tiempo_total_vs_longitud.png')
+    fig.savefig(mainfile, dpi=300, bbox_inches='tight')
+    try:
+        fig.set_size_inches((3.5, 2.4))
+        fig.savefig(os.path.join(output_dir, 'tiempo_total_vs_longitud_ieee_onecol.png'), dpi=300, bbox_inches='tight')
+        fig.set_size_inches((7.16, 3.6))
+        fig.savefig(os.path.join(output_dir, 'tiempo_total_vs_longitud_ieee_twocol.png'), dpi=300, bbox_inches='tight')
+    except Exception:
+        pass
+    plt.close()
+    print('✓ Gráfico guardado: tiempo_total_vs_longitud.png')
+
+    # Además generar versión lineal (ejes lineales) y anotar el último punto (mayor longitud)
+    try:
+        fig_lin, ax_lin = plt.subplots(figsize=(14, 8))
+        for tipo, marker, color in [('dna', 'o', '#2A9D8F'), ('protein', 's', '#E76F51')]:
+            subset = df_ordenado[df_ordenado['tipo'] == tipo]
+            if len(subset) == 0:
+                continue
+            if 'total_s' in subset.columns:
+                y_vals = subset['total_s']
+            else:
+                y_vals = subset['total_ms'] / 1000.0
+            ax_lin.plot(subset['longitud'], y_vals, marker=marker, linestyle='-',
+                        linewidth=2, markersize=6, label=tipo.capitalize(), color=color)
+
+        ax_lin.set_xscale('linear')
+        ax_lin.set_yscale('linear')
+        ax_lin.set_xlabel('Longitud de Secuencias (caracteres)', fontsize=12, fontweight='bold')
+        ax_lin.set_ylabel('Tiempo Total (s)', fontsize=12, fontweight='bold')
+        ax_lin.set_title('Tiempo Total vs Longitud (escala lineal)', fontsize=14, fontweight='bold')
+        ax_lin.grid(True, alpha=0.3)
+        ax_lin.legend(fontsize=11)
+
+        # Seleccionar último punto del DataFrame ordenado (mayor longitud global) y anotarlo
+        if len(df_ordenado) > 0:
+            last = df_ordenado.iloc[-1]
+            lx = last['longitud']
+            ly_s = last['total_s'] if 'total_s' in last.index else last['total_ms'] / 1000.0
+            # Formato en español y en segundos
+            label_last = f"Último: {last['archivo']} = {_format_spanish_number(ly_s, decimals=2)} s"
+            ax_lin.scatter([lx], [ly_s], s=150, facecolors='none', edgecolors='black', linewidths=1.5)
+            # Anotar con flecha
+            ax_lin.annotate(label_last, xy=(lx, ly_s), xytext=(0.6, 0.2), textcoords='axes fraction',
+                            arrowprops=dict(arrowstyle='->', color='black'), fontsize=10,
+                            bbox=dict(boxstyle='round,pad=0.3', fc='yellow', alpha=0.3))
+
+        # Además: si existe una entrada llamada 'dna_150k', marcarla y anotarla en segundos
+        try:
+            dna_row = df_ordenado[df_ordenado['archivo'] == 'dna_150k']
+            if len(dna_row) == 1:
+                dna_r = dna_row.iloc[0]
+                dx = dna_r['longitud']
+                dy_s = dna_r['total_s'] if 'total_s' in dna_r.index else dna_r['total_ms'] / 1000.0
+                # Formato en segundos, redondeado a entero y con notación española
+                sec_label = f"{_format_spanish_number(round(dy_s), decimals=0)} segundos"
+                label_dna = f"dna_150k = {sec_label}"
+                # Dibujar un marcador y una anotación clara (usar color distinto)
+                ax_lin.scatter([dx], [dy_s], s=180, facecolors='none', edgecolors='#264653', linewidths=1.8)
+                ax_lin.annotate(label_dna, xy=(dx, dy_s), xytext=(0.02, 0.85), textcoords='axes fraction',
+                                arrowprops=dict(arrowstyle='->', color='#264653'), fontsize=10,
+                                bbox=dict(boxstyle='round,pad=0.3', fc='lightblue', alpha=0.4))
+        except Exception:
+            # No romper si por alguna razón la fila no existe o faltan columnas
+            pass
+
+        plt.tight_layout()
+        linfile = os.path.join(output_dir, 'tiempo_total_vs_longitud_linear.png')
+        fig_lin.savefig(linfile, dpi=300, bbox_inches='tight')
+        try:
+            fig_lin.set_size_inches((3.5, 2.4))
+            fig_lin.savefig(os.path.join(output_dir, 'tiempo_total_vs_longitud_linear_ieee_onecol.png'), dpi=300, bbox_inches='tight')
+            fig_lin.set_size_inches((7.16, 3.6))
+            fig_lin.savefig(os.path.join(output_dir, 'tiempo_total_vs_longitud_linear_ieee_twocol.png'), dpi=300, bbox_inches='tight')
+        except Exception:
+            pass
+        plt.close()
+        print(f"✓ Gráfico guardado: {os.path.basename(linfile)}")
+    except Exception:
+        pass
+
+def grafico_porcentajes_separados(df, output_dir):
+    """Genera PNGs separados para los porcentajes por fase.
+    - gráfico agrupado (barras lado a lado)
+    - gráficos individuales por fase (barras ordenadas por longitud)
+    """
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
+    archivos = [row['archivo'] for _, row in df_ordenado.iterrows()]
+    x = np.arange(len(df_ordenado))
+    width = 0.25
+
+    # Gráfico agrupado (por archivo: init / llenado / traceback)
+    fig, ax = plt.subplots(figsize=(16, 8))
+    ax.bar(x - width, df_ordenado['pct_init'], width, label='Inicialización', color='#FF6B6B')
+    ax.bar(x, df_ordenado['pct_llenado'], width, label='Llenado de Matriz', color='#4ECDC4')
+    ax.bar(x + width, df_ordenado['pct_traceback'], width, label='Traceback', color='#45B7D1')
+    ax.set_xlabel('Archivo (ordenado por longitud)')
+    ax.set_ylabel('Porcentaje (%)')
+    ax.set_title('Porcentajes por Fase (agrupado)')
+    ax.set_xticks(x)
+    ax.set_xticklabels(archivos, rotation=45, ha='right', fontsize=9)
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.tight_layout()
+    outpath = os.path.join(output_dir, 'porcentajes_por_fase_separado.png')
+    fig.savefig(outpath, dpi=300, bbox_inches='tight')
+    # Guardar versiones con proporciones útiles para paper IEEE
+    # One-column IEEE ~ 3.5 in width, Two-column IEEE ~ 7.16 in width
+    try:
+        fig.set_size_inches((3.5, 2.4))
+        fig.savefig(os.path.join(output_dir, 'porcentajes_por_fase_separado_ieee_onecol.png'), dpi=300, bbox_inches='tight')
+        fig.set_size_inches((7.16, 3.6))
+        fig.savefig(os.path.join(output_dir, 'porcentajes_por_fase_separado_ieee_twocol.png'), dpi=300, bbox_inches='tight')
+    except Exception:
+        # En caso de que set_size_inches no funcione por algún backend, continuar sin fallar
+        pass
+    # Generar versión nativa vertical (tall) con barras horizontales para que el título quede en el borde corto
+    try:
+        fig_h, ax_h = plt.subplots(figsize=(3.5, 7.16))
+        y = np.arange(len(df_ordenado))
+        h = 0.25
+        ax_h.barh(y - h, df_ordenado['pct_init'], height=h, label='Inicialización', color='#FF6B6B')
+        ax_h.barh(y, df_ordenado['pct_llenado'], height=h, label='Llenado de Matriz', color='#4ECDC4')
+        ax_h.barh(y + h, df_ordenado['pct_traceback'], height=h, label='Traceback', color='#45B7D1')
+        ax_h.set_yticks(y)
+        ax_h.set_yticklabels(archivos, fontsize=8)
+        ax_h.invert_yaxis()
+        ax_h.set_xlabel('Porcentaje (%)')
+        ax_h.set_title('Porcentajes por Fase (agrupado)')
+        ax_h.legend()
+        ax_h.grid(True, axis='x', alpha=0.3)
+        plt.tight_layout()
+        fig_h.savefig(os.path.join(output_dir, 'porcentajes_por_fase_separado_ieee_twocol_vert.png'), dpi=300, bbox_inches='tight')
+        plt.close(fig_h)
+    except Exception:
+        pass
+    plt.close()
+    print(f"✓ Gráfico guardado: porcentajes_por_fase_separado.png")
+
+    # Gráficos individuales por fase (barras)
+    fases = [
+        ('Inicialización', 'pct_init', '#FF6B6B', 'porcentaje_init_por_archivo.png'),
+        ('Llenado de Matriz', 'pct_llenado', '#4ECDC4', 'porcentaje_llenado_por_archivo.png'),
+        ('Traceback', 'pct_traceback', '#45B7D1', 'porcentaje_traceback_por_archivo.png')
+    ]
+
+    for titulo, columna, color, filename in fases:
+        fig, ax = plt.subplots(figsize=(14, 6))
+        ax.bar(archivos, df_ordenado[columna], color=color)
+        ax.set_xlabel('Archivo (ordenado por longitud)')
+        ax.set_ylabel('Porcentaje (%)')
+        ax.set_title(f'{titulo} - Porcentaje por Archivo')
+        # Asegurar que el número de ticks coincide con las etiquetas para evitar warnings
+        ax.set_xticks(range(len(archivos)))
+        ax.set_xticklabels(archivos, rotation=45, ha='right', fontsize=9)
+        ax.axhline(y=df_ordenado[columna].mean(), color='red', linestyle='--',
+                   label=f'Promedio: {df_ordenado[columna].mean():.1f}%')
+        ax.legend()
+        ax.grid(True, alpha=0.3, axis='y')
+        plt.tight_layout()
+        outfile = os.path.join(output_dir, filename)
+        fig.savefig(outfile, dpi=300, bbox_inches='tight')
+        # Guardar versiones IEEE (tamaños compactos adecuados para una columna y dos columnas)
+        try:
+            # One-column compact
+            fig.set_size_inches((3.5, 2.2))
+            fig.savefig(os.path.join(output_dir, filename.replace('.png', '_ieee_onecol.png')), dpi=300, bbox_inches='tight')
+            # Two-column horizontal
+            fig.set_size_inches((7.16, 2.8))
+            fig.savefig(os.path.join(output_dir, filename.replace('.png', '_ieee_twocol.png')), dpi=300, bbox_inches='tight')
+            # Two-column vertical (tall) - en vez de rotar la imagen, generar una versión nativa horizontal (barh)
+            try:
+                fig_h, ax_h = plt.subplots(figsize=(3.5, 7.16))
+                y = np.arange(len(df_ordenado))
+                ax_h.barh(y, df_ordenado[columna], color=color)
+                ax_h.set_yticks(y)
+                ax_h.set_yticklabels(archivos, fontsize=8)
+                ax_h.invert_yaxis()
+                ax_h.set_xlabel('Porcentaje (%)')
+                ax_h.set_title(f'{titulo} - Porcentaje por Archivo')
+                ax_h.axvline(x=df_ordenado[columna].mean(), color='red', linestyle='--',
+                              label=f'Promedio: {df_ordenado[columna].mean():.1f}%')
+                ax_h.legend()
+                ax_h.grid(True, axis='x', alpha=0.3)
+                plt.tight_layout()
+                fig_h.savefig(os.path.join(output_dir, filename.replace('.png', '_ieee_twocol_vert.png')), dpi=300, bbox_inches='tight')
+                plt.close(fig_h)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        plt.close()
+        print(f"✓ Gráfico guardado: {filename}")
+
+def grafico_llenado_detalle(df, output_dir):
+    """Genera imágenes enfocadas en el porcentaje de tiempo en llenado de matriz:
+    - barra por archivo con línea de promedio
+    - distribución (histograma + boxplot)
+    """
+    df_ordenado = ordenar_por_tipo_y_longitud(df)
+
+    # Barra con promedio (más enfocada que la anterior)
+    fig, ax = plt.subplots(figsize=(14, 6))
+    archivos = [row['archivo'] for _, row in df_ordenado.iterrows()]
+    ax.bar(archivos, df_ordenado['pct_llenado'], color='#4ECDC4')
+    ax.set_xlabel('Archivo (ordenado por longitud)')
+    ax.set_ylabel('% Llenado')
+    ax.set_title('Porcentaje de Tiempo en Llenado de Matriz por Archivo')
+    # Evitar warning asegurando ticks antes de asignar etiquetas
+    ax.set_xticks(range(len(archivos)))
+    ax.set_xticklabels(archivos, rotation=45, ha='right', fontsize=9)
+    mean_val = df_ordenado['pct_llenado'].mean()
+    ax.axhline(y=mean_val, color='red', linestyle='--', linewidth=1.5,
+               label=f'Promedio: {mean_val:.2f}%')
+    ax.legend()
+    ax.grid(True, alpha=0.3, axis='y')
+    plt.tight_layout()
+    mainfile = os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio.png')
+    fig.savefig(mainfile, dpi=300, bbox_inches='tight')
+    try:
+        fig.set_size_inches((3.5, 2.2))
+        fig.savefig(os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_onecol.png'), dpi=300, bbox_inches='tight')
+        fig.set_size_inches((7.16, 2.8))
+        fig.savefig(os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_twocol.png'), dpi=300, bbox_inches='tight')
+        # Variante vertical para two-column (tall)
+        fig.set_size_inches((3.5, 7.16))
+        fig.savefig(os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_twocol_vert.png'), dpi=300, bbox_inches='tight')
+        # Rotaciones disponibles si Pillow está instalado
+        if Image is not None:
+            try:
+                path_vert = os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_twocol_vert.png')
+                img = Image.open(path_vert)
+                img.rotate(90, expand=True).save(os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_twocol_vert_rot_ccw.png'))
+                img.rotate(-90, expand=True).save(os.path.join(output_dir, 'porcentaje_llenado_por_archivo_promedio_ieee_twocol_vert_rot_cw.png'))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    plt.close()
+    print(f"✓ Gráfico guardado: porcentaje_llenado_por_archivo_promedio.png")
+
+    # Distribución: histograma + boxplot
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6), gridspec_kw={'width_ratios': [3, 1]})
+    sns.histplot(df_ordenado['pct_llenado'], bins=10, kde=True, ax=ax1, color='#4ECDC4')
+    ax1.set_title('Distribución del % Llenado (histograma)')
+    ax1.set_xlabel('% Llenado')
+    ax1.grid(True, alpha=0.3)
+
+    sns.boxplot(y=df_ordenado['pct_llenado'], ax=ax2, color='#4ECDC4')
+    ax2.set_title('Boxplot % Llenado')
+    ax2.set_ylabel('')
+    ax2.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    distrib_file = os.path.join(output_dir, 'porcentaje_llenado_distribucion.png')
+    plt.savefig(distrib_file, dpi=300, bbox_inches='tight')
+    try:
+        # Guardar versión compacta (one-column) adecuada para figura en paper
+        fig.set_size_inches((3.5, 2.4))
+        plt.savefig(os.path.join(output_dir, 'porcentaje_llenado_distribucion_ieee_onecol.png'), dpi=300, bbox_inches='tight')
+        # Añadir variante vertical two-column si interesa (tall)
+        fig.set_size_inches((3.5, 7.16))
+        plt.savefig(os.path.join(output_dir, 'porcentaje_llenado_distribucion_ieee_twocol_vert.png'), dpi=300, bbox_inches='tight')
+        # Rotaciones (CCW/CW) para la variante vertical si Pillow está disponible
+        if Image is not None:
+            try:
+                path_vert = os.path.join(output_dir, 'porcentaje_llenado_distribucion_ieee_twocol_vert.png')
+                img = Image.open(path_vert)
+                img.rotate(90, expand=True).save(os.path.join(output_dir, 'porcentaje_llenado_distribucion_ieee_twocol_vert_rot_ccw.png'))
+                img.rotate(-90, expand=True).save(os.path.join(output_dir, 'porcentaje_llenado_distribucion_ieee_twocol_vert_rot_cw.png'))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    plt.close()
+    print(f"✓ Gráfico guardado: porcentaje_llenado_distribucion.png")
 
 def grafico_torta_por_archivo(df, archivo_seleccionado, output_dir):
     """Gráfico de torta para un archivo específico"""
@@ -297,7 +648,7 @@ def generar_resumen_texto(df, output_dir):
         f.write("\n" + "=" * 80 + "\n")
         f.write("PORCENTAJES DETALLADOS POR ARCHIVO:\n")
         f.write("-" * 80 + "\n")
-        for _, row in df.sort_values('longitud').iterrows():
+        for _, row in ordenar_por_tipo_y_longitud(df).iterrows():
             f.write(f"\n{row['archivo']} ({row['longitud']} chars):\n")
             f.write(f"  Inicialización: {row['pct_init']:.2f}% ({row['init_ms']:.2f} ms)\n")
             f.write(f"  Llenado:        {row['pct_llenado']:.2f}% ({row['llenado_ms']:.2f} ms)\n")
@@ -356,6 +707,10 @@ def main():
     grafico_porcentajes_apilados(df, args.output)
     grafico_tiempos_absolutos(df, args.output)
     grafico_comparativo_fases(df, args.output)
+    grafico_tiempo_total_por_longitud(df, args.output)
+    # Gráficos adicionales y PNGs separados para análisis comparativo
+    grafico_porcentajes_separados(df, args.output)
+    grafico_llenado_detalle(df, args.output)
     
     # Gráfico de torta
     if args.archivo_torta:
