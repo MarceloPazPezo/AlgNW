@@ -49,14 +49,15 @@ fi
 RESULTADOS_DIR="resultados_speedup"
 mkdir -p "$RESULTADOS_DIR"
 
-# Métodos a probar (puedes comentar los que no quieras)
-declare -a METODOS=(
-    "antidiagonal_static"
-    "antidiagonal_dynamic"
-    "antidiagonal_guided"
-    "bloques_static"
-    "bloques_dynamic"
-    "bloques_guided"
+# Métodos y schedules a probar
+# Formato: "metodo:schedule" donde schedule se configura en OMP_SCHEDULE
+declare -a CONFIGURACIONES=(
+    "antidiagonal:static"
+    "antidiagonal:dynamic,1"
+    "antidiagonal:guided,1"
+    "bloques:static"
+    "bloques:dynamic,1"
+    "bloques:guided,1"
 )
 
 # Loop Principal
@@ -73,18 +74,26 @@ for caso in "${CASOS[@]}"; do
         echo -e "${BLUE}Dataset: ${tipo}_${caso}${NC}"
         echo -e "${BLUE}----------------------------------------${NC}"
 
-        for metodo in "${METODOS[@]}"; do
-            echo -e "${CYAN}Metodo: $metodo${NC}"
+        for config in "${CONFIGURACIONES[@]}"; do
+            # Separar metodo y schedule
+            IFS=':' read -r metodo schedule <<< "$config"
+            
+            echo -e "${CYAN}Metodo: $metodo (schedule: $schedule)${NC}"
+            
+            # Configurar OMP_SCHEDULE
+            export OMP_SCHEDULE="$schedule"
             
             # Loop de Hilos
             for t in "${HILOS[@]}"; do
                 
                 export OMP_NUM_THREADS=$t
                 
-                # Nombre del archivo incluye metodo y hilos
-                RESULTADO_CSV="$RESULTADOS_DIR/speedup_${tipo}_${caso}_${metodo}_th${t}.csv"
+                # Nombre del archivo incluye metodo, schedule y hilos
+                # Convertir schedule a formato de nombre de archivo (reemplazar comas y espacios)
+                schedule_clean=$(echo "$schedule" | tr ',' '_' | tr ' ' '_')
+                RESULTADO_CSV="$RESULTADOS_DIR/speedup_${tipo}_${caso}_${metodo}_${schedule_clean}_th${t}.csv"
                 
-                echo -e "  Ejecutando con ${CYAN}$t Hilos${NC}..."
+                echo -e "  Ejecutando con ${CYAN}$t Hilos${NC} (OMP_SCHEDULE=$schedule)..."
                 
                 # Ejecución con selección de método (-m)
                 ./bin/main-benchmark -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -r $REPETICIONES -m "$metodo" -o "$RESULTADO_CSV" > /dev/null 2>&1

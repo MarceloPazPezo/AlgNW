@@ -141,9 +141,15 @@ void mostrarUso(const char* nombre_programa) {
     std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2 -r 5 -o resultados.csv\n\n";
     std::cout << "Metodos comparados:\n";
     std::cout << "  - secuencial\n";
-    std::cout << "  - antidiagonal_static, antidiagonal_dynamic, antidiagonal_guided, antidiagonal_auto\n";
-    std::cout << "  - bloques_static, bloques_dynamic, bloques_guided, bloques_auto\n";
-    std::cout << "  - combinado_static, combinado_dynamic, combinado_guided, combinado_auto\n";
+    std::cout << "  - antidiagonal (schedule desde OMP_SCHEDULE)\n";
+    std::cout << "  - bloques (schedule desde OMP_SCHEDULE)\n";
+    std::cout << "\n";
+    std::cout << "NOTA: Configure OMP_SCHEDULE para cambiar el schedule de OpenMP:\n";
+    std::cout << "  export OMP_SCHEDULE=\"static\"        # static sin chunk\n";
+    std::cout << "  export OMP_SCHEDULE=\"static,1\"      # static con chunk size 1\n";
+    std::cout << "  export OMP_SCHEDULE=\"dynamic,1\"     # dynamic con chunk size 1\n";
+    std::cout << "  export OMP_SCHEDULE=\"guided,1\"      # guided con chunk size mínimo 1\n";
+    std::cout << "  export OMP_SCHEDULE=\"auto\"           # auto (OpenMP decide)\n";
 }
 
 /**
@@ -235,23 +241,11 @@ int main(int argc, char* argv[]) {
         // Secuencial
         {"secuencial", alineamientoNWR},
         
-        // Antidiagonales con diferentes schedules
-        {"antidiagonal_static", alineamientoNWParaleloAntidiagonalStatic},
-        {"antidiagonal_dynamic", alineamientoNWParaleloAntidiagonalDynamic},
-        {"antidiagonal_guided", alineamientoNWParaleloAntidiagonalGuided},
-        {"antidiagonal_auto", alineamientoNWParaleloAntidiagonalAuto},
+        // Paralelo: antidiagonal (schedule desde OMP_SCHEDULE)
+        {"antidiagonal", alineamientoNWParaleloAntidiagonal},
         
-        // Bloques con diferentes schedules
-        {"bloques_static", alineamientoNWParaleloBloquesStatic},
-        {"bloques_dynamic", alineamientoNWParaleloBloquesDynamic},
-        {"bloques_guided", alineamientoNWParaleloBloquesGuided},
-        {"bloques_auto", alineamientoNWParaleloBloquesAuto},
-        
-        // Combinado con diferentes schedules
-        {"combinado_static", alineamientoNWParaleloCombinadoStatic},
-        {"combinado_dynamic", alineamientoNWParaleloCombinadoDynamic},
-        {"combinado_guided", alineamientoNWParaleloCombinadoGuided},
-        {"combinado_auto", alineamientoNWParaleloCombinadoAuto}
+        // Paralelo: bloques (schedule desde OMP_SCHEDULE)
+        {"bloques", alineamientoNWParaleloBloques}
     };
 
     // Filtrar métodos si se seleccionó uno
