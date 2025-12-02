@@ -1,12 +1,12 @@
 /**
- * @file main-benchmark.cpp
- * @brief Programa de benchmarking para comparar todas las implementaciones
+ * @file main-paralelo.cpp
+ * @brief Programa de benchmarking para comparar implementaciones secuencial y paralelas (DNA)
  * 
  * Uso:
- *   ./main-benchmark -f archivo.fasta -p <match> <mismatch> <gap> [-r <repeticiones>] [-o salida.csv]
+ *   ./main-paralelo -f archivo.fasta -p <match> <mismatch> <gap> [-r <repeticiones>] [-o salida.csv]
  * 
  * Ejemplo:
- *   ./main-benchmark -f data/test.fasta -p 2 0 -2 -r 5 -o resultados.csv
+ *   ./main-paralelo -f data/test.fasta -p 2 -1 -2 -r 5 -o resultados.csv
  */
 
 #include <iostream>
@@ -17,7 +17,6 @@
 #include <chrono>
 #include <algorithm>
 #include <cstdlib>
-#include <cstring>
 #include <sstream>
 #include <ctime>
 #include <random>
@@ -30,6 +29,7 @@
 #include "secuencial.h"
 #include "paralelo.h"
 #include "utilidades.h"
+#include <omp.h>
 
 // ============================================================================
 // FUNCIONES AUXILIARES
@@ -37,16 +37,11 @@
 
 /**
  * @brief Limpia la caché accediendo a una gran cantidad de memoria
- * 
- * Esta función intenta limpiar las cachés L1, L2, L3 accediendo a
- * una cantidad significativa de memoria que no está relacionada con
- * las matrices del algoritmo.
  */
 void limpiarCache() {
     const size_t TAMANIO_LIMPIEZA = 100 * 1024 * 1024; // 100 MB
     std::vector<int> buffer_limpieza(TAMANIO_LIMPIEZA / sizeof(int), 0);
     
-    // Acceder a la memoria de forma aleatoria para invalidar caché
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<size_t> dis(0, buffer_limpieza.size() - 1);
@@ -56,12 +51,11 @@ void limpiarCache() {
         buffer_limpieza[idx] = static_cast<int>(i);
     }
     
-    // Forzar escritura para asegurar que la caché se invalide
     volatile int suma = 0;
     for (size_t i = 0; i < buffer_limpieza.size(); i += 1000) {
         suma += buffer_limpieza[i];
     }
-    (void)suma; // Evitar warning de variable no usada
+    (void)suma;
 }
 
 /**
@@ -72,7 +66,9 @@ void guardarResultadosCSV(const std::string& archivo_salida,
                          const std::string& metodo,
                          const ResultadoAlineamiento& resultado,
                          int match, int mismatch, int gap,
-                         int repeticion = 0) {
+                         int repeticion = 0,
+                         int num_threads = 1,
+                         const std::string& schedule = "N/A") {
     
     std::ofstream csv(archivo_salida, std::ios::app);
     
@@ -81,21 +77,21 @@ void guardarResultadosCSV(const std::string& archivo_salida,
         return;
     }
     
-    // Escribir encabezado si el archivo está vacío
     csv.seekp(0, std::ios::end);
     bool archivo_vacio = csv.tellp() == 0;
     
     if (archivo_vacio) {
-        csv << "archivo_fasta,metodo,repeticion,longitud_A,longitud_B,match,mismatch,gap";
+        csv << "archivo_fasta,metodo,repeticion,threads,schedule,longitud_A,longitud_B,match,mismatch,gap";
         csv << ",tiempo_init_ms,tiempo_llenado_ms,tiempo_traceback_ms,tiempo_total_ms,puntuacion\n";
     }
     
-    // Escribir datos
     double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
     
     csv << archivo_fasta << ",";
     csv << metodo << ",";
     csv << repeticion << ",";
+    csv << num_threads << ",";
+    csv << schedule << ",";
     csv << resultado.secA.length() << "," << resultado.secB.length() << ",";
     csv << match << "," << mismatch << "," << gap << ",";
     csv << std::fixed << std::setprecision(4);
@@ -115,13 +111,10 @@ ResultadoAlineamiento ejecutarConLimpiezaCache(
     const std::string& secB,
     const ConfiguracionAlineamiento& config) {
     
-    // Limpiar caché antes de ejecutar
     limpiarCache();
     
-    // Pequeña pausa para asegurar que la limpieza se complete
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     
-    // Ejecutar el método
     return funcion(secA, secB, config);
 }
 
@@ -131,25 +124,24 @@ ResultadoAlineamiento ejecutarConLimpiezaCache(
 void mostrarUso(const char* nombre_programa) {
     std::cout << "Uso: " << nombre_programa << " [opciones]\n\n";
     std::cout << "Opciones:\n";
-    std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias (OBLIGATORIO)\n";
+    std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias DNA (OBLIGATORIO)\n";
     std::cout << "  -p <match> <mismatch> <gap>   Parametros de puntuacion (OBLIGATORIO)\n";
     std::cout << "  -r <numero>           Numero de repeticiones por metodo [default: 1]\n";
+    std::cout << "  -m <metodo>           Método específico a ejecutar [default: todos]\n";
+    std::cout << "                        Opciones: secuencial, antidiagonal, bloques\n";
     std::cout << "  -o <archivo.csv>      Archivo de salida CSV [default: benchmark.csv]\n";
     std::cout << "  -h, --help           Mostrar esta ayuda\n\n";
     std::cout << "Ejemplos:\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2 -r 5 -o resultados.csv\n\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -r 5 -o resultados.csv\n\n";
     std::cout << "Metodos comparados:\n";
     std::cout << "  - secuencial\n";
     std::cout << "  - antidiagonal (schedule desde OMP_SCHEDULE)\n";
     std::cout << "  - bloques (schedule desde OMP_SCHEDULE)\n";
     std::cout << "\n";
-    std::cout << "NOTA: Configure OMP_SCHEDULE para cambiar el schedule de OpenMP:\n";
-    std::cout << "  export OMP_SCHEDULE=\"static\"        # static sin chunk\n";
-    std::cout << "  export OMP_SCHEDULE=\"static,1\"      # static con chunk size 1\n";
-    std::cout << "  export OMP_SCHEDULE=\"dynamic,1\"     # dynamic con chunk size 1\n";
-    std::cout << "  export OMP_SCHEDULE=\"guided,1\"      # guided con chunk size mínimo 1\n";
-    std::cout << "  export OMP_SCHEDULE=\"auto\"           # auto (OpenMP decide)\n";
+    std::cout << "NOTA: Configure OMP_NUM_THREADS y OMP_SCHEDULE para controlar paralelización:\n";
+    std::cout << "  export OMP_NUM_THREADS=8\n";
+    std::cout << "  export OMP_SCHEDULE=\"dynamic,1\"\n";
 }
 
 /**
@@ -157,15 +149,13 @@ void mostrarUso(const char* nombre_programa) {
  */
 int main(int argc, char* argv[]) {
     
-    // Variables para parámetros
     std::string archivo_fasta = "";
     std::string archivo_salida = "benchmark.csv";
-    std::string metodo_seleccionado = ""; // [NEW] Variable para seleccionar método
+    std::string metodo_seleccionado = "";  // Para seleccionar un método específico
     int match = 0, mismatch = 0, gap = 0;
     int repeticiones = 1;
     bool parametros_validos = false;
     
-    // Parsear argumentos
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         
@@ -177,7 +167,13 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "-r" && i + 1 < argc) {
             repeticiones = std::atoi(argv[++i]);
-            if (repeticiones < 1) repeticiones = 1;
+            if (repeticiones < 1) {
+                std::cerr << "Error: El número de repeticiones debe ser >= 1\n";
+                return 1;
+            }
+        }
+        else if (arg == "-m" && i + 1 < argc) {
+            metodo_seleccionado = argv[++i];
         }
         else if (arg == "-p" && i + 3 < argc) {
             match = std::atoi(argv[++i]);
@@ -185,16 +181,12 @@ int main(int argc, char* argv[]) {
             gap = std::atoi(argv[++i]);
             parametros_validos = true;
         }
-        else if ((arg == "-m" || arg == "--metodo") && i + 1 < argc) { // [NEW] Argumento -m
-            metodo_seleccionado = argv[++i];
-        }
         else if (arg == "-h" || arg == "--help") {
             mostrarUso(argv[0]);
             return 0;
         }
     }
     
-    // Validar argumentos
     if (archivo_fasta.empty()) {
         std::cerr << "Error: Debe especificar un archivo FASTA con -f\n\n";
         mostrarUso(argv[0]);
@@ -207,8 +199,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Leer secuencias del archivo FASTA
-    std::cout << "Leyendo secuencias de " << archivo_fasta << "...\n";
     std::vector<std::string> secuencias = leerArchivoFasta(archivo_fasta);
     
     if (secuencias.size() < 2) {
@@ -223,32 +213,38 @@ int main(int argc, char* argv[]) {
     std::cout << "Secuencia B: " << secB.length() << " caracteres\n";
     std::cout << "Parametros: match=" << match << ", mismatch=" << mismatch << ", gap=" << gap << "\n";
     std::cout << "Repeticiones por metodo: " << repeticiones << "\n";
-    if (!metodo_seleccionado.empty()) {
-        std::cout << "Metodo seleccionado: " << metodo_seleccionado << "\n";
-    }
-    std::cout << "\n";
     
-    // Crear configuración de alineamiento
+    std::cout << "\n=== CONFIGURACIÓN OPENMP ===\n";
+    const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
+    if (omp_num_threads_env != nullptr) {
+        std::cout << "OMP_NUM_THREADS: " << omp_num_threads_env << "\n";
+    } else {
+        std::cout << "OMP_NUM_THREADS: default (" << omp_get_max_threads() << " threads)\n";
+    }
+    const char* schedule = std::getenv("OMP_SCHEDULE");
+    if (schedule != nullptr) {
+        std::cout << "OMP_SCHEDULE: " << schedule << "\n";
+    } else {
+        std::cout << "OMP_SCHEDULE: default (static)\n";
+    }
+    std::cout << "Threads máximos disponibles: " << omp_get_max_threads() << "\n";
+    std::cout << "============================\n\n";
+    
     ConfiguracionAlineamiento config(match, mismatch, gap, false);
     
-    // Definir métodos a probar
     struct MetodoPrueba {
         std::string nombre;
         std::function<ResultadoAlineamiento(const std::string&, const std::string&, const ConfiguracionAlineamiento&)> funcion;
     };
     
     std::vector<MetodoPrueba> todos_metodos = {
-        // Secuencial
-        {"secuencial", alineamientoNWR},
+        {"secuencial", AlgNW},
         
-        // Paralelo: antidiagonal (schedule desde OMP_SCHEDULE)
         {"antidiagonal", alineamientoNWParaleloAntidiagonal},
         
-        // Paralelo: bloques (schedule desde OMP_SCHEDULE)
         {"bloques", alineamientoNWParaleloBloques}
     };
-
-    // Filtrar métodos si se seleccionó uno
+    
     std::vector<MetodoPrueba> metodos;
     if (!metodo_seleccionado.empty()) {
         bool encontrado = false;
@@ -260,8 +256,8 @@ int main(int argc, char* argv[]) {
             }
         }
         if (!encontrado) {
-            std::cerr << "Error: Metodo '" << metodo_seleccionado << "' no encontrado.\n";
-            std::cerr << "Metodos disponibles:\n";
+            std::cerr << "Error: Método '" << metodo_seleccionado << "' no encontrado.\n";
+            std::cerr << "Métodos disponibles:\n";
             for (const auto& m : todos_metodos) {
                 std::cerr << "  - " << m.nombre << "\n";
             }
@@ -275,7 +271,13 @@ int main(int argc, char* argv[]) {
     std::cout << "Metodos: " << metodos.size() << "\n";
     std::cout << "Total de ejecuciones: " << (metodos.size() * repeticiones) << "\n\n";
     
-    // Ejecutar cada método
+    int num_threads = omp_get_max_threads();
+    std::string schedule_str = "N/A";
+    const char* schedule_env = std::getenv("OMP_SCHEDULE");
+    if (schedule_env != nullptr) {
+        schedule_str = std::string(schedule_env);
+    }
+    
     for (const auto& metodo : metodos) {
         std::cout << "--- Metodo: " << metodo.nombre << " ---\n";
         
@@ -283,26 +285,38 @@ int main(int argc, char* argv[]) {
             std::cout << "  Repeticion " << r << "/" << repeticiones << "... ";
             std::cout.flush();
             
-            // Ejecutar con limpieza de caché
-            auto inicio = std::chrono::high_resolution_clock::now();
             ResultadoAlineamiento resultado = ejecutarConLimpiezaCache(
                 metodo.funcion, secA, secB, config);
-            auto fin = std::chrono::high_resolution_clock::now();
             
-            double tiempo_total = std::chrono::duration<double, std::milli>(fin - inicio).count();
-            
-            // Guardar resultado
             guardarResultadosCSV(archivo_salida, archivo_fasta, metodo.nombre, 
-                               resultado, match, mismatch, gap, r);
+                               resultado, match, mismatch, gap, r, num_threads, schedule_str);
             
-            std::cout << "Completado (total: " << std::fixed << std::setprecision(2) 
-                      << tiempo_total << " ms)\n";
+            double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
+            std::cout << "Tiempo: " << std::fixed << std::setprecision(2) 
+                      << tiempo_total << " ms, Puntuacion: " << resultado.puntuacion << "\n";
         }
         std::cout << "\n";
     }
     
     std::cout << "=== BENCHMARK COMPLETADO ===\n";
     std::cout << "Resultados guardados en: " << archivo_salida << "\n";
+    
+    if (metodos.size() > 1 && repeticiones > 0) {
+        std::cout << "\n=== COMPARACIÓN DE RESULTADOS ===\n";
+        
+        ResultadoAlineamiento resultado_secuencial = ejecutarConLimpiezaCache(
+            AlgNW, secA, secB, config);
+        ResultadoAlineamiento resultado_antidiagonal = ejecutarConLimpiezaCache(
+            alineamientoNWParaleloAntidiagonal, secA, secB, config);
+        ResultadoAlineamiento resultado_bloques = ejecutarConLimpiezaCache(
+            alineamientoNWParaleloBloques, secA, secB, config);
+        
+        compararResultados(resultado_secuencial, resultado_antidiagonal, 
+                          "secuencial", "antidiagonal");
+        
+        compararResultados(resultado_secuencial, resultado_bloques, 
+                          "secuencial", "bloques");
+    }
     
     return 0;
 }

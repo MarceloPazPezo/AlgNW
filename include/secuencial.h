@@ -6,26 +6,8 @@
 
 /**
  * @file secuencial.h
- * @brief Interfaz pública para las implementaciones secuenciales de Needleman–Wunsch.
+ * @brief Interfaz para la implementación secuencial de Needleman–Wunsch con recálculo de traceback.
  */
-
-/**
- * @brief Ejecuta Needleman–Wunsch usando una matriz de traceback (punteros).
- *
- * Esta variante almacena la dirección de traceback en una matriz auxiliar y
- * realiza el traceback leyendo esa matriz. Es sencilla de entender y útil para
- * valores moderados de memoria.
- *
- * @param secA Secuencia A (string) a alinear.
- * @param secB Secuencia B (string) a alinear.
- * @param config Configuración de alineamiento (puntuación, verbose, etc.).
- * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados si aplica.
- */
-ResultadoAlineamiento alineamientoNWP(
-    const std::string& secA,
-    const std::string& secB,
-    const ConfiguracionAlineamiento& config
-);
 
 /**
  * @brief Ejecuta Needleman–Wunsch con recálculo del traceback (optimizado en memoria).
@@ -39,10 +21,11 @@ ResultadoAlineamiento alineamientoNWP(
  * @param config Configuración de alineamiento (puntuación, verbose, etc.).
  * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados si aplica.
  */
-ResultadoAlineamiento alineamientoNWR(
+ResultadoAlineamiento AlgNW(
     const std::string& secA,
     const std::string& secB,
     const ConfiguracionAlineamiento& config
 );
 
 #endif // SECUENCIAL_H
+

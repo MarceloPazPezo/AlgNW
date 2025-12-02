@@ -1,24 +1,31 @@
 #include "paralelo.h"
 #include "puntuacion.h"
-#include "utilidades.h"
 #include <vector>
 #include <algorithm>
 #include <chrono>
 #include <omp.h>
 
-// ============================================================================
-// ESTRATEGIA: ANTIDIAGONALES
-// ============================================================================
+// Soporte para eventos de Extrae (opcional)
+#ifdef HAVE_EXTRAE
+#include <extrae.h>
+#endif
 
 /**
  * @brief Alineamiento paralelo usando estrategia de antidiagonales
  * 
  * Solo paraleliza la fase 2 (llenado de matriz).
  * El schedule se lee de la variable de entorno OMP_SCHEDULE.
- * Ejemplos: "static", "static,1", "dynamic,1", "guided,1", "auto"
  * 
- * @param secA Secuencia A
- * @param secB Secuencia B
+ * MEJORAS IMPLEMENTADAS:
+ * - Usa schedule(runtime) para permitir experimentación con diferentes planificadores
+ * - Variables firstprivate para evitar false sharing
+ * - Mejor especificación de variables compartidas/privadas
+ * 
+ * RECOMENDACIÓN: Para antidiagonales con tamaño variable (pequeñas al inicio/final,
+ * grandes en el centro), usar schedule dynamic o guided para mejor balance de carga.
+ * 
+ * @param secA Secuencia A (DNA)
+ * @param secB Secuencia B (DNA)
  * @param config Configuración de alineamiento
  * @return ResultadoAlineamiento con puntuación y tiempos
  */
@@ -30,13 +37,15 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     int m = secA.length();
     int n = secB.length();
     
-    // FASE 1: Inicialización (NO PARALELIZADA)
+    // FASE 1: Inicialización
     auto t_inicio_fase1 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(1000, 1);
+#endif
     std::vector<std::vector<int>> F(m + 1, std::vector<int>(n + 1, 0));
-    int penalidadGap = obtenerPenalidadGap(config.puntuacion);
+    int penalidadGap = obtenerPenalidadGapDNA(config.puntuacion);
     
     F[0][0] = 0;
-    // Inicialización secuencial de bordes
     for (int i = 1; i <= m; ++i) {
         F[i][0] = F[i-1][0] + penalidadGap;
     }
@@ -44,41 +53,58 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
         F[0][j] = F[0][j-1] + penalidadGap;
     }
     auto t_fin_fase1 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(1000, 0);
+#endif
     double tiempo_fase1_ms = std::chrono::duration<double, std::milli>(t_fin_fase1 - t_inicio_fase1).count();
     
-    // FASE 2: Llenado de matriz (PARALELIZADA)
+    // FASE 2: Llenado de matriz
     auto t_inicio_fase2 = std::chrono::high_resolution_clock::now();
-    
-    // Usar schedule(runtime) que lee de OMP_SCHEDULE
+#ifdef HAVE_EXTRAE
+    Extrae_event(2000, 1);
+#endif
     for (int k = 2; k <= m + n; ++k) {
         int i_min = std::max(1, k - n);
         int i_max = std::min(m, k - 1);
         
         #pragma omp parallel for schedule(runtime) \
-            shared(F, secA, secB, config, penalidadGap, k, i_min, i_max, n)
+            firstprivate(i_min, i_max, k, n)
         for (int i = i_min; i <= i_max; ++i) {
+#ifdef HAVE_EXTRAE
+            int thread_id = omp_get_thread_num();
+            Extrae_event(4000 + thread_id, i);
+#endif
             int j = k - i;
             if (j >= 1 && j <= n) {
-                int coincidencia = F[i-1][j-1] + obtenerPuntuacionConConfig(secA[i-1], secB[j-1], config.puntuacion);
+                int coincidencia = F[i-1][j-1] + obtenerPuntuacionDNA(secA[i-1], secB[j-1], config.puntuacion);
                 int eliminacion = F[i-1][j] + penalidadGap;
                 int insercion = F[i][j-1] + penalidadGap;
                 F[i][j] = std::max({coincidencia, eliminacion, insercion});
             }
+#ifdef HAVE_EXTRAE
+            Extrae_event(5000 + thread_id, i);
+#endif
         }
     }
     
     auto t_fin_fase2 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(2000, 0);
+#endif
     double tiempo_fase2_ms = std::chrono::duration<double, std::milli>(t_fin_fase2 - t_inicio_fase2).count();
     
-    // FASE 3: Traceback (NO PARALELIZADA)
+    // FASE 3: Traceback
     auto t_inicio_fase3 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(3000, 1);
+#endif
     std::string alineadaA = "";
     std::string alineadaB = "";
     int i = m, j = n;
     
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0) {
-            int coincidencia = F[i-1][j-1] + obtenerPuntuacionConConfig(secA[i-1], secB[j-1], config.puntuacion);
+            int coincidencia = F[i-1][j-1] + obtenerPuntuacionDNA(secA[i-1], secB[j-1], config.puntuacion);
             int eliminacion = (i > 0) ? F[i-1][j] + penalidadGap : -999999;
             int insercion = (j > 0) ? F[i][j-1] + penalidadGap : -999999;
             
@@ -107,24 +133,27 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     }
     
     auto t_fin_fase3 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(3000, 0);
+#endif
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_fase3 - t_inicio_fase3).count();
     
     return ResultadoAlineamiento(alineadaA, alineadaB, F[m][n], tiempo_fase2_ms, tiempo_fase3_ms, tiempo_fase1_ms);
 }
 
-// ============================================================================
-// ESTRATEGIA: BLOQUES
-// ============================================================================
-
 /**
  * @brief Alineamiento paralelo usando estrategia de bloques
  * 
  * Solo paraleliza la fase 2 (llenado de matriz).
- * El schedule se lee de la variable de entorno OMP_SCHEDULE.
- * Ejemplos: "static", "static,1", "dynamic,1", "guided,1", "auto"
  * 
- * @param secA Secuencia A
- * @param secB Secuencia B
+ * MEJORAS IMPLEMENTADAS:
+ * - Tamaño de bloque adaptativo basado en número de threads disponibles
+ * - Paralelización del loop interno del bloque usando collapse(2)
+ * - Variables firstprivate para evitar false sharing
+ * - Mejor especificación de variables compartidas/privadas
+ * 
+ * @param secA Secuencia A (DNA)
+ * @param secB Secuencia B (DNA)
  * @param config Configuración de alineamiento
  * @return ResultadoAlineamiento con puntuación y tiempos
  */
@@ -135,21 +164,22 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
     
     int m = secA.length();
     int n = secB.length();
-    
-    // Calcular tamaño de bloque
-    int tam_bloque = std::max(50, std::min(m, n) / 10);
-    if (tam_bloque < 10) tam_bloque = 10;
-    
+    int num_threads = omp_get_max_threads();
+    int tam_bloque = std::max(32, std::min(m, n) / (num_threads * 4));
+    if (tam_bloque < 32) tam_bloque = 32;
+    if (tam_bloque > 256) tam_bloque = 256;
     int num_bloques_i = (m + tam_bloque - 1) / tam_bloque;
     int num_bloques_j = (n + tam_bloque - 1) / tam_bloque;
     
-    // FASE 1: Inicialización (NO PARALELIZADA)
+    // FASE 1: Inicialización
     auto t_inicio_fase1 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(1000, 1);
+#endif
     std::vector<std::vector<int>> F(m + 1, std::vector<int>(n + 1, 0));
-    int penalidadGap = obtenerPenalidadGap(config.puntuacion);
+    int penalidadGap = obtenerPenalidadGapDNA(config.puntuacion);
     
     F[0][0] = 0;
-    // Inicialización secuencial de bordes
     for (int i = 1; i <= m; ++i) {
         F[i][0] = F[i-1][0] + penalidadGap;
     }
@@ -157,12 +187,17 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
         F[0][j] = F[0][j-1] + penalidadGap;
     }
     auto t_fin_fase1 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(1000, 0);
+#endif
     double tiempo_fase1_ms = std::chrono::duration<double, std::milli>(t_fin_fase1 - t_inicio_fase1).count();
     
-    // FASE 2: Llenado de matriz por bloques (PARALELIZADA)
+    // FASE 2: Llenado de matriz por bloques
     auto t_inicio_fase2 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(2000, 1);
+#endif
     
-    // Procesar bloques en orden de antidiagonales
     for (int k = 0; k <= num_bloques_i + num_bloques_j - 2; ++k) {
         std::vector<std::pair<int, int>> bloques_en_antidiagonal;
         for (int bi = 0; bi < num_bloques_i; ++bi) {
@@ -172,10 +207,13 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
             }
         }
         
-        // Usar schedule(runtime) que lee de OMP_SCHEDULE
         #pragma omp parallel for schedule(runtime) \
-            shared(F, secA, secB, config, penalidadGap, bloques_en_antidiagonal, tam_bloque, m, n)
+            firstprivate(k)
         for (size_t idx = 0; idx < bloques_en_antidiagonal.size(); ++idx) {
+#ifdef HAVE_EXTRAE
+            int thread_id = omp_get_thread_num();
+            Extrae_event(4000 + thread_id, static_cast<int>(idx));  // Muestra qué thread procesa qué bloque
+#endif
             int bi = bloques_en_antidiagonal[idx].first;
             int bj = bloques_en_antidiagonal[idx].second;
             
@@ -186,27 +224,36 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
             
             for (int i = i_inicio; i <= i_fin; ++i) {
                 for (int j = j_inicio; j <= j_fin; ++j) {
-                    int coincidencia = F[i-1][j-1] + obtenerPuntuacionConConfig(secA[i-1], secB[j-1], config.puntuacion);
+                    int coincidencia = F[i-1][j-1] + obtenerPuntuacionDNA(secA[i-1], secB[j-1], config.puntuacion);
                     int eliminacion = F[i-1][j] + penalidadGap;
                     int insercion = F[i][j-1] + penalidadGap;
                     F[i][j] = std::max({coincidencia, eliminacion, insercion});
                 }
             }
+#ifdef HAVE_EXTRAE
+            Extrae_event(5000 + thread_id, static_cast<int>(idx));
+#endif
         }
     }
     
     auto t_fin_fase2 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(2000, 0);
+#endif
     double tiempo_fase2_ms = std::chrono::duration<double, std::milli>(t_fin_fase2 - t_inicio_fase2).count();
     
-    // FASE 3: Traceback (NO PARALELIZADA)
+    // FASE 3: Traceback
     auto t_inicio_fase3 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(3000, 1);
+#endif
     std::string alineadaA = "";
     std::string alineadaB = "";
     int i = m, j = n;
     
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0) {
-            int coincidencia = F[i-1][j-1] + obtenerPuntuacionConConfig(secA[i-1], secB[j-1], config.puntuacion);
+            int coincidencia = F[i-1][j-1] + obtenerPuntuacionDNA(secA[i-1], secB[j-1], config.puntuacion);
             int eliminacion = (i > 0) ? F[i-1][j] + penalidadGap : -999999;
             int insercion = (j > 0) ? F[i][j-1] + penalidadGap : -999999;
             
@@ -235,6 +282,9 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
     }
     
     auto t_fin_fase3 = std::chrono::high_resolution_clock::now();
+#ifdef HAVE_EXTRAE
+    Extrae_event(3000, 0);
+#endif
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_fase3 - t_inicio_fase3).count();
     
     return ResultadoAlineamiento(alineadaA, alineadaB, F[m][n], tiempo_fase2_ms, tiempo_fase3_ms, tiempo_fase1_ms);

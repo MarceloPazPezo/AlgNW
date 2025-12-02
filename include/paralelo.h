@@ -6,19 +6,15 @@
 
 /**
  * @file paralelo.h
- * @brief Interfaz pública para las implementaciones paralelas de Needleman–Wunsch.
+ * @brief Interfaz pública para las implementaciones paralelas de Needleman–Wunsch (DNA).
  * 
  * NOTA: El schedule de OpenMP se configura mediante la variable de entorno OMP_SCHEDULE.
  * Ejemplos:
  *   export OMP_SCHEDULE="static"          # static sin chunk específico
  *   export OMP_SCHEDULE="static,1"        # static con chunk size 1
- *   export OMP_SCHEDULE="static,10"      # static con chunk size 10
- *   export OMP_SCHEDULE="dynamic,1"      # dynamic con chunk size 1
- *   export OMP_SCHEDULE="dynamic,10"      # dynamic con chunk size 10
+ *   export OMP_SCHEDULE="dynamic,1"      # dynamic con chunk size 1 (recomendado para antidiagonales)
  *   export OMP_SCHEDULE="guided,1"       # guided con chunk size mínimo 1
  *   export OMP_SCHEDULE="auto"            # auto (OpenMP decide)
- * 
- * El formato es: "tipo" o "tipo,chunk_size"
  * 
  * Solo la fase 2 (llenado de matriz) está paralelizada.
  */
@@ -31,11 +27,15 @@
  * Los elementos de una antidiagonal k (donde i+j=k) pueden procesarse en paralelo
  * ya que solo dependen de elementos de antidiagonales anteriores.
  * 
+ * MEJORAS: Usa schedule(runtime) para permitir experimentación con diferentes
+ * planificadores. Para antidiagonales con tamaño variable, se recomienda
+ * schedule dynamic o guided para mejor balance de carga.
+ * 
  * Solo paraleliza la fase 2 (llenado de matriz). La fase 1 (inicialización)
  * y fase 3 (traceback) se ejecutan secuencialmente.
  *
- * @param secA Secuencia A (string) a alinear.
- * @param secB Secuencia B (string) a alinear.
+ * @param secA Secuencia A (DNA) a alinear.
+ * @param secB Secuencia B (DNA) a alinear.
  * @param config Configuración de alineamiento (puntuación, verbose, etc.).
  * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados.
  */
@@ -52,11 +52,16 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
  * Los bloques se procesan respetando las dependencias: un bloque solo puede
  * procesarse cuando sus bloques dependientes (arriba, izquierda, diagonal) están listos.
  * 
+ * MEJORAS:
+ * - Tamaño de bloque adaptativo basado en número de threads
+ * - Paralelización del loop interno del bloque para mejor aprovechamiento
+ * - Uso de firstprivate para evitar false sharing
+ * 
  * Solo paraleliza la fase 2 (llenado de matriz). La fase 1 (inicialización)
  * y fase 3 (traceback) se ejecutan secuencialmente.
  *
- * @param secA Secuencia A (string) a alinear.
- * @param secB Secuencia B (string) a alinear.
+ * @param secA Secuencia A (DNA) a alinear.
+ * @param secB Secuencia B (DNA) a alinear.
  * @param config Configuración de alineamiento (puntuación, verbose, etc.).
  * @return ResultadoAlineamiento Contiene puntuación y tiempos instrumentados.
  */
@@ -67,3 +72,4 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
 );
 
 #endif // PARALELO_H
+

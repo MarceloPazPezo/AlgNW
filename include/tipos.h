@@ -5,28 +5,14 @@
 #include "puntuacion.h"
 
 /**
- * @brief Direcciones usadas en el traceback del alineamiento.
+ * @brief Resultado de un alineamiento global de DNA.
  *
- * DIAGONAL: corresponde a un match o mismatch entre caracteres.
- * ARRIBA: indica una inserción de un gap en la secuencia B (deleción en A).
- * IZQUIERDA: indica una inserción de un gap en la secuencia A (inserción en B).
- */
-enum class Direccion {
-    DIAGONAL,    // coincidencia/sustitución
-    ARRIBA,      // gap en B (eliminación)
-    IZQUIERDA    // gap en A (inserción)
-};
-
-/**
- * @brief Resultado de un alineamiento global.
- *
- * Contiene las secuencias alineadas (o sus representaciones resultantes),
- * la puntuación final y tiempos medidos para las fases internas si están
- * instrumentadas (llenado de la matriz DP y traceback).
+ * Contiene las secuencias alineadas, la puntuación final y tiempos medidos
+ * para las fases internas (llenado de la matriz DP y traceback).
  */
 struct ResultadoAlineamiento {
-    std::string secA;              /**< Secuencia A (alineada o resultado). */
-    std::string secB;              /**< Secuencia B (alineada o resultado). */
+    std::string secA;              /**< Secuencia A (alineada). */
+    std::string secB;              /**< Secuencia B (alineada). */
     int puntuacion;                /**< Puntuación final del alineamiento. */
     double tiempo_fase1_ms;       /**< Tiempo (ms) empleado en la inicialización. */
     double tiempo_fase2_ms;       /**< Tiempo (ms) empleado en el llenado DP. */
@@ -43,33 +29,20 @@ struct ResultadoAlineamiento {
 };
 
 /**
- * @brief Configuración para ejecutar un alineamiento.
+ * @brief Configuración para ejecutar un alineamiento de DNA.
  *
- * Agrupa la configuración de puntuación y opciones de ejecución (por ejemplo
- * verbose). Proporciona múltiples constructores de conveniencia para crear
- * configuraciones rápidas (matrices predefinidas, esquema simple, etc.).
+ * Agrupa la configuración de puntuación y opciones de ejecución.
  */
 struct ConfiguracionAlineamiento {
-    ConfiguracionPuntuacion puntuacion;  /**< Configuración de puntuación a utilizar. */
-    bool verbose;                        /**< Habilita salida verbosa si es true. */
+    ConfiguracionPuntuacionDNA puntuacion;  /**< Configuración de puntuación DNA. */
+    bool verbose;                            /**< Habilita salida verbosa si es true. */
     
     /**
      * @brief Constructor por defecto.
-     * Usa el esquema DNA simple por defecto y penalidad de gap = -2.
+     * Usa match=2, mismatch=-1, gap=-2 por defecto.
      */
     ConfiguracionAlineamiento() 
-        : puntuacion(), verbose(false) {}
-    
-    /**
-     * @brief Constructor basado en una matriz predefinida.
-     * @param tipoMatriz Matriz de sustitución a usar (p.ej. BLOSUM62).
-     * @param penalidad_gap Penalidad para gaps (valor negativo usualmente).
-     * @param verboso Activa modo verbose si es true.
-     */
-    ConfiguracionAlineamiento(TipoMatrizPuntuacion tipoMatriz, int penalidad_gap = -2, bool verboso = false)
-        : puntuacion(tipoMatriz), verbose(verboso) {
-        puntuacion.parametrosSimples.gap = penalidad_gap;
-    }
+        : puntuacion(2, -1, -2), verbose(false) {}
     
     /**
      * @brief Constructor con esquema simple (coincidencia/sustitución/gap).
@@ -82,28 +55,13 @@ struct ConfiguracionAlineamiento {
         : puntuacion(coincidencia, sustitucion, penalidad_gap), verbose(verboso) {}
     
     /**
-     * @brief Constructor con un objeto ConfiguracionPuntuacion completo.
+     * @brief Constructor con un objeto ConfiguracionPuntuacionDNA completo.
      * @param config_punt Configuración de puntuación ya construida.
      * @param verboso Flag verbose.
      */
-    ConfiguracionAlineamiento(const ConfiguracionPuntuacion& config_punt, bool verboso = false)
+    ConfiguracionAlineamiento(const ConfiguracionPuntuacionDNA& config_punt, bool verboso = false)
         : puntuacion(config_punt), verbose(verboso) {}
-    
-    /**
-     * @brief Constructor legacy para compatibilidad con versiones previas.
-     * @param penalidad_gap Penalidad por gap.
-     * @param esProteina True si se desea una matriz de proteínas por defecto.
-     * @param verboso Flag verbose.
-     */
-    ConfiguracionAlineamiento(int penalidad_gap, bool esProteina, bool verboso = false)
-        : verbose(verboso) {
-        if (esProteina) {
-            puntuacion = ConfiguracionPuntuacion(TipoMatrizPuntuacion::BLOSUM62);
-        } else {
-            puntuacion = ConfiguracionPuntuacion(TipoMatrizPuntuacion::DNA_SIMPLE);
-        }
-        puntuacion.parametrosSimples.gap = penalidad_gap;
-    }
 };
 
 #endif // TIPOS_H
+

@@ -1,12 +1,12 @@
 /**
  * @file main-secuencial.cpp
- * @brief Programa para ejecutar el algoritmo Needleman-Wunsch de forma secuencial
+ * @brief Programa para ejecutar el algoritmo Needleman-Wunsch de forma secuencial (DNA)
  * 
  * Uso:
- *   ./bin/main-secuencial -f archivo.fasta -p <match> <mismatch> <gap> [-o salida.csv]
+ *   ./main-secuencial -f archivo.fasta -p <match> <mismatch> <gap> [-o salida.csv]
  * 
  * Ejemplo:
- *   ./bin/main-secuencial -f datos/test.fasta -p 2 0 -2 -o resultado.csv
+ *   ./main-secuencial -f datos/test.fasta -p 2 -1 -2 -o resultado.csv
  */
 
 #include <iostream>
@@ -28,21 +28,28 @@ void guardarCSV(const std::string& archivo_salida,
                 const ResultadoAlineamiento& resultado,
                 int match, int mismatch, int gap) {
     
-    std::ofstream csv(archivo_salida);
+    std::ofstream csv(archivo_salida, std::ios::app);
     
     if (!csv.is_open()) {
         std::cerr << "Error: No se pudo abrir el archivo " << archivo_salida << "\n";
         return;
     }
     
-    // Escribir encabezado
-    csv << "archivo_fasta,longitud_A,longitud_B,match,mismatch,gap";
-    csv << ",tiempo_init_ms,tiempo_llenado_ms,tiempo_traceback_ms,tiempo_total_ms,puntuacion\n";
+    csv.seekp(0, std::ios::end);
+    bool archivo_vacio = csv.tellp() == 0;
     
-    // Escribir datos
+    if (archivo_vacio) {
+        csv << "archivo_fasta,metodo,repeticion,threads,schedule,longitud_A,longitud_B,match,mismatch,gap";
+        csv << ",tiempo_init_ms,tiempo_llenado_ms,tiempo_traceback_ms,tiempo_total_ms,puntuacion\n";
+    }
+    
     double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
     
     csv << archivo_fasta << ",";
+    csv << "secuencial,";  // método
+    csv << "1,";  // repeticion (siempre 1 para secuencial)
+    csv << "1,";  // threads (siempre 1 para secuencial)
+    csv << "N/A,";  // schedule (no aplica para secuencial)
     csv << resultado.secA.length() << "," << resultado.secB.length() << ",";
     csv << match << "," << mismatch << "," << gap << ",";
     csv << std::fixed << std::setprecision(4);
@@ -59,13 +66,13 @@ void guardarCSV(const std::string& archivo_salida,
 void mostrarUso(const char* nombre_programa) {
     std::cout << "Uso: " << nombre_programa << " [opciones]\n\n";
     std::cout << "Opciones:\n";
-    std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias (OBLIGATORIO)\n";
+    std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias DNA (OBLIGATORIO)\n";
     std::cout << "  -p <match> <mismatch> <gap>   Parametros de puntuacion (OBLIGATORIO)\n";
     std::cout << "  -o <archivo.csv>      Archivo de salida CSV [default: resultado.csv]\n";
     std::cout << "  -h, --help           Mostrar esta ayuda\n\n";
     std::cout << "Ejemplos:\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 0 -2 -o resultado.csv\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -o resultado.csv\n";
 }
 
 /**
@@ -130,13 +137,11 @@ int main(int argc, char* argv[]) {
     std::cout << "Secuencia B: " << secB.length() << " caracteres\n";
     std::cout << "Parametros: match=" << match << ", mismatch=" << mismatch << ", gap=" << gap << "\n\n";
     
-    // Crear configuración de alineamiento
     ConfiguracionAlineamiento config(match, mismatch, gap, false);
     
-    // Ejecutar alineamiento secuencial
     std::cout << "Ejecutando alineamiento secuencial...\n";
     auto inicio = std::chrono::high_resolution_clock::now();
-    ResultadoAlineamiento resultado = alineamientoNWR(secA, secB, config);
+    ResultadoAlineamiento resultado = AlgNW(secA, secB, config);
     auto fin = std::chrono::high_resolution_clock::now();
     
     double tiempo_total = std::chrono::duration<double, std::milli>(fin - inicio).count();

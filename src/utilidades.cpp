@@ -1,23 +1,22 @@
 #include "utilidades.h"
+#include "puntuacion.h"
 #include <iostream>
 #include <iomanip>
 #include <chrono>
 #include <fstream>
 #include <sstream>
-#include <ctime>
+#include <algorithm>
 
 void imprimirAlineamiento(const std::string& secA, const std::string& secB, int puntuacion) {
     std::cout << "\n=== ALINEAMIENTO GLOBAL ===\n";
     std::cout << "Puntuación: " << puntuacion << "\n\n";
     
-    // Imprimir secuencia A
     std::cout << "Secuencia A: ";
     for (char c : secA) {
         std::cout << c << " ";
     }
     std::cout << "\n";
     
-    // Imprimir línea de comparación
     std::cout << "             ";
     for (size_t i = 0; i < secA.length(); ++i) {
         if (secA[i] == secB[i]) {
@@ -30,14 +29,12 @@ void imprimirAlineamiento(const std::string& secA, const std::string& secB, int 
     }
     std::cout << "\n";
     
-    // Imprimir secuencia B
     std::cout << "Secuencia B: ";
     for (char c : secB) {
         std::cout << c << " ";
     }
     std::cout << "\n\n";
     
-    // Leyenda
     std::cout << "Leyenda: | = coincidencia, · = sustitución, espacio = gap\n";
     std::cout << "==========================================\n\n";
 }
@@ -71,12 +68,139 @@ void compararResultados(const ResultadoAlineamiento& resultado1, const Resultado
     std::cout << "================================\n\n";
 }
 
-double medirTiempo(std::function<void()> func) {
-    auto inicio = std::chrono::high_resolution_clock::now();
-    func();
-    auto fin = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> duracion = fin - inicio;
-    return duracion.count();
+static std::vector<std::vector<int>> calcularMatrizPuntuacion(
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config) {
+    
+    int m = secA.length();
+    int n = secB.length();
+    std::vector<std::vector<int>> F(m + 1, std::vector<int>(n + 1, 0));
+    int penalidadGap = obtenerPenalidadGapDNA(config.puntuacion);
+    
+    // Inicialización
+    F[0][0] = 0;
+    for (int i = 1; i <= m; ++i) {
+        F[i][0] = F[i-1][0] + penalidadGap;
+    }
+    for (int j = 1; j <= n; ++j) {
+        F[0][j] = F[0][j-1] + penalidadGap;
+    }
+    
+    // Llenar la matriz
+    for (int i = 1; i <= m; ++i) {
+        for (int j = 1; j <= n; ++j) {
+            int coincidencia = F[i-1][j-1] + obtenerPuntuacionDNA(secA[i-1], secB[j-1], config.puntuacion);
+            int eliminacion = F[i-1][j] + penalidadGap;
+            int insercion = F[i][j-1] + penalidadGap;
+            F[i][j] = std::max({coincidencia, eliminacion, insercion});
+        }
+    }
+    
+    return F;
+}
+
+void compararResultadosDetallado(
+    const ResultadoAlineamiento& resultado1, 
+    const ResultadoAlineamiento& resultado2, 
+    const std::string& metodo1, 
+    const std::string& metodo2,
+    const std::string& secA,
+    const std::string& secB,
+    const ConfiguracionAlineamiento& config,
+    bool comparar_matrices,
+    int umbral_tamano_matriz) {
+    
+    std::cout << "\n=== COMPARACIÓN DETALLADA DE MÉTODOS ===\n";
+    std::cout << "Método 1: " << metodo1 << "\n";
+    std::cout << "Método 2: " << metodo2 << "\n\n";
+    
+    // Comparar puntuaciones
+    std::cout << "--- PUNTUACIÓN FINAL (F[m][n]) ---\n";
+    std::cout << "  " << metodo1 << ": " << resultado1.puntuacion << "\n";
+    std::cout << "  " << metodo2 << ": " << resultado2.puntuacion << "\n";
+    
+    bool puntuaciones_iguales = (resultado1.puntuacion == resultado2.puntuacion);
+    if (puntuaciones_iguales) {
+        std::cout << "  ✓ Puntuaciones IDÉNTICAS\n\n";
+    } else {
+        std::cout << "  ✗ Puntuaciones DIFERENTES (diferencia: " 
+                  << (resultado2.puntuacion - resultado1.puntuacion) << ")\n\n";
+    }
+    
+    // Comparar secuencias alineadas
+    std::cout << "--- SECUENCIAS ALINEADAS ---\n";
+    bool secA_iguales = (resultado1.secA == resultado2.secA);
+    bool secB_iguales = (resultado1.secB == resultado2.secB);
+    
+    if (secA_iguales && secB_iguales) {
+        std::cout << "  ✓ Secuencias alineadas IDÉNTICAS\n";
+        std::cout << "    Longitud: " << resultado1.secA.length() << " caracteres\n\n";
+    } else {
+        std::cout << "  ✗ Secuencias alineadas DIFERENTES\n";
+        if (!secA_iguales) {
+            std::cout << "    - Secuencia A difiere\n";
+            if (resultado1.secA.length() != resultado2.secA.length()) {
+                std::cout << "      Longitudes: " << resultado1.secA.length() 
+                          << " vs " << resultado2.secA.length() << "\n";
+            }
+        }
+        if (!secB_iguales) {
+            std::cout << "    - Secuencia B difiere\n";
+            if (resultado1.secB.length() != resultado2.secB.length()) {
+                std::cout << "      Longitudes: " << resultado1.secB.length() 
+                          << " vs " << resultado2.secB.length() << "\n";
+            }
+        }
+        std::cout << "\n";
+    }
+    
+    // Comparar matrices si se solicita y es factible
+    int m = secA.length();
+    int n = secB.length();
+    bool matriz_pequena = (m <= umbral_tamano_matriz && n <= umbral_tamano_matriz);
+    
+    if (comparar_matrices && matriz_pequena) {
+        std::cout << "--- MATRIZ DE PUNTUACIÓN ---\n";
+        std::cout << "  Calculando matriz de referencia...\n";
+        
+        auto matriz_ref = calcularMatrizPuntuacion(secA, secB, config);
+        
+        // Verificar que la puntuación final coincide
+        if (matriz_ref[m][n] == resultado1.puntuacion && matriz_ref[m][n] == resultado2.puntuacion) {
+            std::cout << "  ✓ Puntuación final F[" << m << "][" << n << "] = " 
+                      << matriz_ref[m][n] << " coincide con ambos métodos\n";
+        } else {
+            std::cout << "  ✗ Inconsistencia en puntuación final:\n";
+            std::cout << "    Matriz referencia: " << matriz_ref[m][n] << "\n";
+            std::cout << "    " << metodo1 << ": " << resultado1.puntuacion << "\n";
+            std::cout << "    " << metodo2 << ": " << resultado2.puntuacion << "\n";
+        }
+        std::cout << "\n";
+    } else if (comparar_matrices && !matriz_pequena) {
+        std::cout << "--- MATRIZ DE PUNTUACIÓN ---\n";
+        std::cout << "  ⚠ Matriz demasiado grande (" << m << "x" << n 
+                  << ") para comparación completa\n";
+        std::cout << "  Solo se compara la puntuación final F[" << m << "][" << n << "]\n";
+        std::cout << "  (Umbral: " << umbral_tamano_matriz << "x" << umbral_tamano_matriz << ")\n\n";
+    }
+    
+    // Resumen final
+    std::cout << "--- RESUMEN ---\n";
+    bool todo_igual = puntuaciones_iguales && secA_iguales && secB_iguales;
+    if (todo_igual) {
+        std::cout << "✓ AMBOS MÉTODOS PRODUCEN RESULTADOS IDÉNTICOS\n";
+    } else {
+        std::cout << "✗ LOS MÉTODOS PRODUCEN RESULTADOS DIFERENTES\n";
+        if (!puntuaciones_iguales) {
+            std::cout << "  - ERROR CRÍTICO: Puntuaciones diferentes\n";
+        }
+        if (!secA_iguales || !secB_iguales) {
+            std::cout << "  - ADVERTENCIA: Secuencias alineadas diferentes\n";
+            std::cout << "    (Esto puede ser normal si hay múltiples alineamientos óptimos)\n";
+        }
+    }
+    std::cout << "==========================================\n\n";
 }
 
 std::vector<std::string> leerArchivoFasta(const std::string& nombreArchivo) {
@@ -120,147 +244,3 @@ std::vector<std::string> leerArchivoFasta(const std::string& nombreArchivo) {
     return secuencias;
 }
 
-bool exportarBenchmarkACSV(const std::vector<ResultadoBenchmark>& resultados, 
-                          const std::string& nombreArchivo) {
-    std::ofstream archivo(nombreArchivo);
-    
-    if (!archivo.is_open()) {
-        std::cerr << "Error: No se pudo crear el archivo " << nombreArchivo << "\n";
-        return false;
-    }
-    
-    // Escribir cabecera
-    archivo << "nombre_test,metodo,longitud_sec_a,longitud_sec_b,es_proteina,penalidad_gap,"
-            << "tiempo_init_ms,tiempo_llenado_ms,tiempo_trace_ms,tiempo_total_ms,puntuacion\n";
-    
-    // Escribir datos
-    for (const auto& r : resultados) {
-        archivo << r.nombre_test << "," 
-                << r.metodo << "," 
-                << r.longitud_sec_a << "," 
-                << r.longitud_sec_b << ","
-                << (r.es_proteina ? "proteina" : "dna") << "," 
-                << r.penalidad_gap << ","
-                << std::fixed << std::setprecision(4) << r.tiempo_init_ms << ","
-                << std::fixed << std::setprecision(4) << r.tiempo_llenado_ms << ","
-                << std::fixed << std::setprecision(4) << r.tiempo_trace_ms << ","
-                << std::fixed << std::setprecision(4) << r.tiempo_total_ms << "," 
-                << r.puntuacion << "\n";
-    }
-    
-    archivo.close();
-    return true;
-}
-
-bool anexarBenchmarkACSV(const ResultadoBenchmark& resultado, 
-                        const std::string& nombreArchivo) {
-    // Verificar si el archivo existe para decidir si escribir cabecera
-    bool archivoExiste = false;
-    {
-        std::ifstream test(nombreArchivo);
-        archivoExiste = test.good();
-    }
-    
-    std::ofstream archivo(nombreArchivo, std::ios::app);
-    
-    if (!archivo.is_open()) {
-        std::cerr << "Error: No se pudo abrir el archivo " << nombreArchivo << "\n";
-        return false;
-    }
-    
-    // Escribir cabecera si el archivo no existía
-    if (!archivoExiste) {
-        archivo << "nombre_test,metodo,longitud_sec_a,longitud_sec_b,es_proteina,penalidad_gap,"
-                << "tiempo_init_ms,tiempo_llenado_ms,tiempo_trace_ms,tiempo_total_ms,puntuacion\n";
-    }
-    
-    // Escribir datos
-    archivo << resultado.nombre_test << "," 
-            << resultado.metodo << "," 
-            << resultado.longitud_sec_a << "," 
-            << resultado.longitud_sec_b << ","
-            << (resultado.es_proteina ? "proteina" : "dna") << "," 
-            << resultado.penalidad_gap << ","
-            << std::fixed << std::setprecision(4) << resultado.tiempo_init_ms << ","
-            << std::fixed << std::setprecision(4) << resultado.tiempo_llenado_ms << ","
-            << std::fixed << std::setprecision(4) << resultado.tiempo_trace_ms << ","
-            << std::fixed << std::setprecision(4) << resultado.tiempo_total_ms << "," 
-            << resultado.puntuacion << "\n";
-    
-    archivo.close();
-    return true;
-}
-
-// ========== FUNCIONES DE GESTIÓN DE MEMORIA ==========
-
-InfoMemoria calcularUsoMemoria(size_t lenA, size_t lenB, bool conPunteros) {
-    InfoMemoria info;
-    info.longitud_sec_a = lenA;
-    info.longitud_sec_b = lenB;
-    info.usa_matriz_traceback = conPunteros;
-    
-    // Matriz de puntuaciones: (m+1) x (n+1) x sizeof(int)
-    size_t elementos_matriz = (lenA + 1) * (lenB + 1);
-    size_t bytes_matriz = elementos_matriz * sizeof(int);
-    info.tamaño_matriz_mb = bytes_matriz / (1024 * 1024);
-    
-    // Matriz de traceback (solo si conPunteros)
-    if (conPunteros) {
-        // Asumiendo 1 byte por dirección (enum)
-        size_t bytes_traceback = elementos_matriz * sizeof(char);
-        info.tamaño_traceback_mb = bytes_traceback / (1024 * 1024);
-    } else {
-        info.tamaño_traceback_mb = 0;
-    }
-    
-    info.memoria_total_mb = info.tamaño_matriz_mb + info.tamaño_traceback_mb;
-    
-    return info;
-}
-
-bool verificarLimitesSecuencia(size_t lenA, size_t lenB, bool mostrarAdvertencias) {
-    if (lenA > LONGITUD_MAXIMA_SECUENCIA || lenB > LONGITUD_MAXIMA_SECUENCIA) {
-        if (mostrarAdvertencias) {
-            std::cerr << "⚠️  ERROR: Secuencia demasiado grande!\n";
-            std::cerr << "   Longitud máxima permitida: " << LONGITUD_MAXIMA_SECUENCIA << " caracteres\n";
-            std::cerr << "   Longitud recibida: A=" << lenA << ", B=" << lenB << "\n";
-        }
-        return false;
-    }
-    
-    if ((lenA >= LONGITUD_ADVERTENCIA_SECUENCIA || lenB >= LONGITUD_ADVERTENCIA_SECUENCIA) && mostrarAdvertencias) {
-        std::cerr << "⚠️  ADVERTENCIA: Secuencias grandes detectadas\n";
-        std::cerr << "   Esto puede requerir mucha memoria y tiempo de procesamiento\n";
-        std::cerr << "   Longitudes: A=" << lenA << ", B=" << lenB << "\n";
-    }
-    
-    return true;
-}
-
-void imprimirInfoMemoria(const InfoMemoria& info) {
-    std::cout << "\n=== INFORMACIÓN DE MEMORIA ===\n";
-    std::cout << "Longitudes: A=" << info.longitud_sec_a << ", B=" << info.longitud_sec_b << "\n";
-    std::cout << "Matriz de puntuaciones: " << info.tamaño_matriz_mb << " MB\n";
-    if (info.usa_matriz_traceback) {
-        std::cout << "Matriz de traceback: " << info.tamaño_traceback_mb << " MB\n";
-    } else {
-        std::cout << "Matriz de traceback: NO USADA (traceback recalculado)\n";
-    }
-    std::cout << "Memoria total estimada: " << info.memoria_total_mb << " MB\n";
-    std::cout << "==============================\n\n";
-}
-
-std::string formatearBytes(size_t bytes) {
-    const char* unidades[] = {"B", "KB", "MB", "GB", "TB"};
-    int unidad = 0;
-    double tamaño = static_cast<double>(bytes);
-    
-    while (tamaño >= 1024.0 && unidad < 4) {
-        tamaño /= 1024.0;
-        unidad++;
-    }
-    
-    std::ostringstream ss;
-    ss << std::fixed << std::setprecision(2) << tamaño << " " << unidades[unidad];
-    return ss.str();
-}

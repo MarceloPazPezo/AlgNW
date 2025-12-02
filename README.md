@@ -1,498 +1,187 @@
-# Algoritmo Needleman-Wunsch (AlgNW)
+# AlgNW - Versión Simplificada (DNA)
 
-Proyecto de implementación del algoritmo de alineamiento global Needleman-Wunsch para secuencias biológicas.
+Implementación simplificada del algoritmo Needleman-Wunsch para alineamiento global de secuencias DNA, con versiones secuencial y paralelas (antidiagonal y bloques) usando OpenMP.
+
+## Descripción
+
+Este proyecto implementa el algoritmo Needleman-Wunsch para alineamiento global de secuencias biológicas, enfocado únicamente en secuencias DNA. Incluye:
+
+- **Algoritmo secuencial**: Implementación de referencia
+- **Algoritmo paralelo antidiagonal**: Paralelización por antidiagonales
+- **Algoritmo paralelo bloques**: Paralelización por bloques
 
 ## Compilación
 
-### Requisitos
-- Compilador C++ compatible con C++11 (g++ o clang++)
-- Sistema operativo Linux/Unix
-
-### Compilar los programas
-
-Para compilar todos los programas:
 ```bash
-make
+cd src
+make                    # Compila todos los programas
+make clean              # Limpia archivos compilados
+make rebuild            # Limpia y recompila todo
 ```
 
-Esto generará los ejecutables en el directorio `bin/`:
-- `bin/main-secuencial` - Programa de alineamiento secuencial
-- `bin/main-gen-secuencia` - Generador de secuencias
+Los ejecutables se generan en `bin/`:
+- `bin/main-secuencial` - Algoritmo secuencial
+- `bin/main-paralelo` - Comparación de métodos (secuencial vs paralelo)
+- `bin/main-gen-secuencia` - Generador de secuencias DNA
 
-### Opciones del Makefile
+## Uso
 
-- `make` o `make all` - Compila todos los programas
-- `make clean` - Elimina los archivos compilados
-- `make rebuild` - Limpia y recompila todo desde cero
-- `make help` - Muestra ayuda sobre los comandos disponibles
-
-## Uso de los Programas
-
-### 1. Generador de Secuencias (`main-gen-secuencia`)
-
-Genera pares de secuencias biológicas para pruebas y benchmarking.
-
-#### Uso básico
-```bash
-./bin/main-gen-secuencia -t <tipo> -l <longitud> -s <similitud> -o <salida>
-```
-
-#### Parámetros
-- `-t, --tipo`: Tipo de secuencia (`dna`, `rna`, `proteina` o `protein`)
-- `-l, --longitud`: Longitud de las secuencias
-- `-s, --similitud`: Similitud objetivo entre 0.0 y 1.0
-- `-o, --salida`: Prefijo del archivo de salida (se añadirá `.fasta`)
-- `-b, --batch`: Modo lote (genera múltiples archivos)
-- `-h, --ayuda`: Muestra ayuda
-
-#### Ejemplos
-
-Generar un par de secuencias de DNA:
-```bash
-./bin/main-gen-secuencia -t dna -l 100 -s 0.9 -o datos/test
-```
-Esto creará el archivo `datos/test.fasta`
-
-Generar un lote de secuencias para benchmarking:
-```bash
-./bin/main-gen-secuencia -b -o datos/
-```
-Esto generará múltiples archivos con diferentes longitudes y similitudes.
-
-### Scripts de Generación de Datos
-
-Hay tres scripts para generar datos según el tipo de análisis:
-
-#### 1. `generar_casos_notebook.sh` - Casos para Notebook (poca RAM)
-
-Genera casos pequeños diseñados para notebooks con poca memoria y análisis con Extrae/Paraver:
-- **Longitudes**: 500, 1k, 2k, 5k, 10k
-- **Uso**: Análisis detallado con herramientas de profiling
-- **Memoria requerida**: < 1 GB
+### 1. Generar datos de prueba
 
 ```bash
-./generar_casos_notebook.sh
-./generar_casos_notebook.sh -s 0.85 --solo-dna
+# Generar secuencias DNA (potencias de 2: 128, 256, 512, 1k, 2k, 4k, 8k, 16k, 32k)
+./generar-datos.sh
+
+# Con opciones personalizadas
+./generar-datos.sh -s 0.85 -o datos_custom/
 ```
 
-#### 2. `generar_casos_servidor.sh` - Casos para Servidor (mucha RAM)
-
-Genera casos grandes para análisis completo en servidor:
-- **Longitudes**: 20k, 30k, 50k, 75k, 100k, 125k, 150k
-- **Uso**: Benchmark completo y análisis de escalabilidad
-- **Memoria requerida**: Hasta ~36 GB (para 150k)
+### 2. Ejecutar algoritmo secuencial
 
 ```bash
-./generar_casos_servidor.sh
-./generar_casos_servidor.sh -s 0.85 --solo-dna
+./bin/main-secuencial -f datos/dna_1k.fasta -p 2 -1 -2 -o resultado.csv
 ```
 
-⚠️ **ADVERTENCIA**: El caso más grande (150k) requiere aproximadamente 36 GB de RAM.
+### 3. Ejecutar comparación paralela
 
-#### 3. `generar_datos.sh` - Generación General
-
-Script de conveniencia para generar automáticamente archivos FASTA de ADN y proteínas con las longitudes comúnmente usadas para benchmarking.
-
-#### Uso básico
 ```bash
-./generar_datos.sh
+# Configurar variables de entorno OpenMP
+export OMP_NUM_THREADS=8
+export OMP_SCHEDULE="dynamic,1"
+
+# Ejecutar todos los métodos
+./bin/main-paralelo -f datos/dna_1k.fasta -p 2 -1 -2 -r 5 -o resultados.csv
+
+# Ejecutar un método específico
+./bin/main-paralelo -f datos/dna_1k.fasta -p 2 -1 -2 -r 5 -m antidiagonal -o resultados.csv
 ```
 
-Por defecto, esto generará archivos tanto de **ADN** como de **proteínas** con las siguientes longitudes:
-- 500 (500 caracteres)
-- 1k (1000 caracteres)
-- 2k (2000 caracteres)
-- 5k (5000 caracteres)
-- 10k (10000 caracteres)
-- 20k (20000 caracteres)
-- 30k (30000 caracteres)
-- 50k (50000 caracteres)
-- 75k (75000 caracteres)
-- 100k (100000 caracteres)
+### 4. Ejecutar benchmark completo
 
-Los archivos se guardarán en el directorio `datos/` con nombres:
-- ADN: `dna_1k.fasta`, `dna_2k.fasta`, etc.
-- Proteínas: `protein_1k.fasta`, `protein_2k.fasta`, etc.
-
-#### Opciones
-- `-s, --similitud <valor>`: Similitud objetivo (0.0 - 1.0) [default: 0.9]
-- `-o, --output <directorio>`: Directorio de salida [default: datos/]
-- `--solo-dna`: Generar solo archivos de ADN
-- `--solo-proteina`: Generar solo archivos de proteínas
-- `-h, --help`: Muestra ayuda
-
-#### Ejemplos
-
-Generar datos con similitud personalizada (ADN y proteínas):
 ```bash
-./generar_datos.sh -s 0.85
+# Ejecuta secuencial y paralelo con diferentes configuraciones
+# (tamaños, threads, schedules)
+./ejecutar-benchmark.sh
 ```
 
-Generar solo datos de ADN:
+El script itera sobre:
+- **Tamaños**: 128, 256, 512, 1k, 2k, 4k, 8k, 16k, 32k
+- **Threads**: 2, 4, 6, 8 (para cada método paralelo)
+- **Schedules**: static, static,1, dynamic,1, guided,1
+- **Métodos**: antidiagonal, bloques
+
+Los resultados se guardan en `resultados/resultados_completo.csv` con el siguiente formato:
+- Primero ejecuta el secuencial (baseline)
+- Luego ejecuta cada método paralelo con cada schedule y número de threads
+- El CSV incluye columnas: archivo_fasta, metodo, repeticion, threads, schedule, longitud_A, longitud_B, match, mismatch, gap, tiempos, puntuacion
+
+## Parámetros
+
+- `-f <archivo.fasta>`: Archivo FASTA con las secuencias (obligatorio)
+- `-p <match> <mismatch> <gap>`: Parámetros de puntuación (obligatorio)
+- `-r <numero>`: Número de repeticiones [default: 1]
+- `-m <metodo>`: Método específico (secuencial, antidiagonal, bloques) [default: todos]
+- `-o <archivo.csv>`: Archivo de salida CSV [default: benchmark.csv o resultado.csv]
+- `-h, --help`: Mostrar ayuda
+
+## Variables de Entorno OpenMP
+
+- `OMP_NUM_THREADS`: Número de threads a usar (ej: `export OMP_NUM_THREADS=8`)
+- `OMP_SCHEDULE`: Planificador de OpenMP (ej: `export OMP_SCHEDULE="dynamic,1"`)
+
+## Soporte para Extrae/Paraver
+
+El código incluye eventos de usuario de Extrae para marcar las diferentes fases del algoritmo y analizar la distribución del trabajo en los loops paralelos:
+
+### Eventos de Fases
+- **Evento 1000**: Fase de inicialización (1=inicio, 0=fin)
+- **Evento 2000**: Fase de llenado de matriz (1=inicio, 0=fin)
+- **Evento 3000**: Fase de traceback (1=inicio, 0=fin)
+
+### Eventos de Distribución de Trabajo (dentro de loops paralelos)
+Para analizar cómo los diferentes planificadores (static, dynamic, guided) distribuyen el trabajo:
+
+- **Eventos 4000-4999**: Inicio de iteración/bloque por thread
+  - `4000 + thread_id`: Indica que el thread `thread_id` está empezando a procesar
+  - Valor del evento: número de iteración/bloque que está procesando
+- **Eventos 5000-5999**: Fin de iteración/bloque por thread
+  - `5000 + thread_id`: Indica que el thread `thread_id` terminó de procesar
+  - Valor del evento: número de iteración/bloque que terminó
+
+**Ejemplo de interpretación:**
+- Con `schedule(static)`: Verás bloques uniformes de trabajo asignados secuencialmente a cada thread
+- Con `schedule(dynamic)`: Verás trabajo distribuido de forma irregular, threads tomando trabajo cuando terminan
+- Con `schedule(guided)`: Similar a dynamic pero con chunks que disminuyen exponencialmente
+
+Los eventos se insertan usando `Extrae_event(tipo, valor)` donde:
+- `tipo` es el identificador del evento
+- `valor` contiene información sobre la iteración/bloque procesado
+
+### Compilar con soporte de Extrae
+
 ```bash
-./generar_datos.sh --solo-dna
+# Opción 1: Si Extrae está en /usr
+make EXTRAE=1
+
+# Opción 2: Especificar ruta de Extrae
+make EXTRAE_HOME=/ruta/a/extrae
 ```
 
-Generar solo datos de proteínas:
+### Ejecutar con Extrae
+
 ```bash
-./generar_datos.sh --solo-proteina
+# Configurar Extrae
+export EXTRAE_CONFIG_FILE=./extrae.xml
+export EXTRAE_TRACE_NAME=nw_trace
+
+# Ejecutar el programa
+./bin/main-paralelo -f datos/dna_1k.fasta -p 2 -1 -2 -r 1
 ```
 
-Generar datos en un directorio específico:
-```bash
-./generar_datos.sh -o data/ -s 0.95
-```
+Los eventos aparecerán en Paraver como eventos de usuario, permitiendo identificar visualmente cada fase del algoritmo en las trazas de rendimiento.
 
-**Nota:** El script automáticamente compilará el generador si no está disponible.
-
-### 2. Alineamiento Secuencial (`main-secuencial`)
-
-Ejecuta el algoritmo de alineamiento Needleman-Wunsch de forma secuencial.
-
-#### Uso básico
-```bash
-./bin/main-secuencial -f <archivo.fasta> -p <match> <mismatch> <gap> [-o <salida.csv>]
-```
-
-#### Parámetros
-- `-f <archivo.fasta>`: Archivo FASTA con las secuencias (OBLIGATORIO)
-  - Debe contener al menos 2 secuencias
-  - El programa usará las primeras 2 secuencias encontradas
-- `-p <match> <mismatch> <gap>`: Parámetros de puntuación (OBLIGATORIO)
-  - `match`: Puntuación por coincidencia (ej: 2)
-  - `mismatch`: Puntuación por sustitución (ej: 0)
-  - `gap`: Penalidad por gap (ej: -2)
-- `-o <archivo.csv>`: Archivo de salida CSV (opcional, por defecto: `resultado.csv`)
-- `-h, --help`: Muestra ayuda
-
-#### Ejemplos
-
-Ejecutar alineamiento con parámetros básicos:
-```bash
-./bin/main-secuencial -f datos/test.fasta -p 2 0 -2
-```
-
-Especificar archivo de salida:
-```bash
-./bin/main-secuencial -f datos/test.fasta -p 2 0 -2 -o resultado-test.csv
-```
-
-Alineamiento para proteínas con matriz BLOSUM:
-```bash
-./bin/main-secuencial -f datos/protein.fasta -p 5 -4 -10
-```
-
-### Script de Ejecución con Promedios (`ejecutar_promedio.sh`)
-
-Script para ejecutar `main-secuencial` múltiples veces y calcular promedios y estadísticas de los tiempos y puntuación.
-
-#### Uso básico
-```bash
-./ejecutar_promedio.sh -n <numero> -f <archivo.fasta> -p <match> <mismatch> <gap>
-```
-
-#### Parámetros obligatorios
-- `-n, --numero <n>`: Número de ejecuciones para promediar
-- `-f, --fasta <archivo>`: Archivo FASTA con las secuencias
-- `-p <match> <mismatch> <gap>`: Parámetros de puntuación
-
-#### Opciones
-- `-o, --output <archivo>`: Archivo CSV de salida [default: `resultado_promedio.csv`]
-- `-v, --verbose`: Mostrar salida detallada de cada ejecución
-- `-h, --help`: Muestra ayuda
-
-#### Ejemplos
-
-Ejecutar 5 veces y calcular promedios:
-```bash
-./ejecutar_promedio.sh -n 5 -f datos/dna_1k.fasta -p 2 0 -2
-```
-
-Ejecutar 10 veces con salida personalizada:
-```bash
-./ejecutar_promedio.sh -n 10 -f datos/protein_5k.fasta -p 5 -4 -10 -o resultados.csv
-```
-
-Ejecutar con salida detallada:
-```bash
-./ejecutar_promedio.sh -n 3 -f datos/dna_2k.fasta -p 2 0 -2 -v
-```
-
-#### Verificación de Memoria
-
-**NUEVO:** El script ahora verifica automáticamente la RAM disponible antes de ejecutar y calcula si la matriz de alineamiento cabrá en memoria.
-
-- **Verificación previa**: Lee las longitudes de las secuencias del archivo FASTA
-- **Cálculo de memoria**: Estima la memoria necesaria para la matriz (N+1) × (M+1)
-- **Comparación**: Verifica si hay suficiente RAM disponible (usa 80% como umbral de seguridad)
-- **Protección**: **Detiene la ejecución** si no hay suficiente memoria, evitando:
-  - Ejecuciones de 50k sin suficiente RAM (requiere ~20 GB)
-  - Ejecuciones de 100k sin suficiente RAM (requiere ~80 GB)
-  - Crashes del sistema por falta de memoria
-
-El script mostrará:
-- Longitudes de las secuencias
-- Memoria estimada necesaria
-- RAM disponible en el sistema
-- Advertencias para secuencias grandes (>5 GB)
-
-#### Estadísticas generadas
-
-El script calcula y muestra:
-- **Promedio**: Tiempo/puntuación promedio de todas las ejecuciones
-- **Mínimo**: Valor mínimo registrado
-- **Máximo**: Valor máximo registrado
-- **Desviación estándar**: Variabilidad de los resultados
-
-Se generan estadísticas para:
-- Tiempo de inicialización
-- Tiempo de llenado de matriz
-- Tiempo de traceback
-- Tiempo total
-- Puntuación
-
-El script también genera dos archivos CSV:
-- Archivo de estadísticas: Contiene los promedios y estadísticas calculadas
-- Archivo individual: Contiene los datos de cada ejecución individual (sufijo `_individual.csv`)
-
-### Script de Benchmark para Todos los Archivos (`benchmark_todos.sh`)
-
-Script automatizado para ejecutar benchmarks de todos los archivos FASTA en un directorio, ejecutando promedios de múltiples veces para cada uno.
-
-#### Uso básico
-```bash
-./benchmark_todos.sh
-```
-
-Este script:
-- Busca todos los archivos `.fasta` en el directorio `datos/`
-- Detecta automáticamente si son ADN o proteínas
-- Ejecuta `ejecutar_promedio.sh` con 10 ejecuciones por defecto
-- Crea un archivo `resumen_consolidado.csv` con todos los resultados
-
-#### Opciones
-- `-d, --datos <directorio>`: Directorio con archivos FASTA [default: `datos/`]
-- `-n, --numero <n>`: Número de ejecuciones por archivo [default: 10]
-- `-v, --verbose`: Mostrar salida detallada
-- `--skip-errors`: Continuar automáticamente si hay error (sin preguntar)
-- `--dna-params <m> <mm> <g>`: Parámetros para ADN: match mismatch gap [default: 2 0 -2]
-- `--protein-params <m> <mm> <g>`: Parámetros para proteínas [default: 5 -4 -10]
-- `-h, --help`: Muestra ayuda
-
-#### Ejemplos
-
-Ejecutar benchmarks de todos los archivos:
-```bash
-./benchmark_todos.sh
-```
-
-Ejecutar con 5 iteraciones por archivo:
-```bash
-./benchmark_todos.sh -n 5
-```
-
-Ejecutar con salida detallada y continuar aunque haya errores:
-```bash
-./benchmark_todos.sh -v --skip-errors
-```
-
-### Script de Análisis y Visualización (`analizar_benchmark.py`)
-
-Script en Python para analizar los resultados de los benchmarks y generar gráficos que muestran:
-- **Porcentajes de tiempo por fase**: Inicialización, llenado de matriz, traceback
-- **Distribución de tiempos**: Gráficos comparativos entre fases
-- **Análisis de cuello de botella**: Identifica qué fase consume más tiempo
-
-#### Requisitos
-
-Instalar las dependencias de Python:
-```bash
-pip install -r requirements.txt
-```
-
-O instalar manualmente:
-```bash
-pip install pandas matplotlib seaborn numpy
-```
-
-#### Uso básico
-```bash
-python3 analizar_benchmark.py
-```
-
-#### Opciones
-- `-d, --directorio <dir>`: Directorio con archivos CSV de resultados [default: `resultados_benchmark/`]
-- `-o, --output <dir>`: Directorio para guardar gráficos [default: `graficos_benchmark/`]
-- `-a, --archivo-torta <archivo>`: Archivo específico para gráfico de torta (opcional)
-- `-h, --help`: Muestra ayuda
-
-#### Ejemplos
-
-Analizar resultados con configuración por defecto:
-```bash
-python3 analizar_benchmark.py
-```
-
-Especificar directorios personalizados:
-```bash
-python3 analizar_benchmark.py -d mis_resultados/ -o mis_graficos/
-```
-
-Generar gráfico de torta para un archivo específico:
-```bash
-python3 analizar_benchmark.py -a dna_10k
-```
-
-#### Gráficos generados
-
-El script genera los siguientes gráficos:
-
-1. **`porcentajes_por_fase_apilado.png`**: Gráfico de barras apiladas mostrando el porcentaje del tiempo total que consume cada fase (inicialización, llenado, traceback) para cada archivo.
-
-2. **`tiempos_absolutos_por_fase.png`**: Gráfico de líneas con escala logarítmica mostrando los tiempos absolutos (ms) de cada fase vs la longitud de las secuencias.
-
-3. **`analisis_comparativo_fases.png`**: Panel de 4 gráficos comparativos:
-   - Tiempos absolutos por fase
-   - Porcentajes por fase
-   - Porcentaje de tiempo en llenado de matriz (cuello de botella)
-   - Tiempo total vs longitud (coloreado por % de llenado)
-
-4. **`torta_<archivo>.png`**: Gráfico de torta para un archivo específico mostrando la distribución de tiempo por fase.
-
-5. **`resumen_analisis.txt`**: Resumen en texto con estadísticas importantes, incluyendo:
-   - Promedios de porcentaje por fase
-   - Archivo con mayor % en llenado (cuello de botella principal)
-   - Porcentajes detallados por archivo
-
-#### Interpretación de resultados
-
-El script identifica automáticamente que **el llenado de matriz (Fase 2)** es típicamente el cuello de botella, consumiendo normalmente entre 80-95% del tiempo total. Esto es esperado ya que:
-- La fase de llenado tiene complejidad O(N×M) y requiere accesos a memoria
-- La inicialización es O(N+M) y generalmente muy rápida
-- El traceback es O(N+M) pero puede ser más lento que la inicialización debido a construcción de strings
-
-## Formato de Salida
-
-### Archivo CSV (`main-secuencial`)
-
-El programa genera un archivo CSV con los siguientes campos:
-- `archivo_fasta`: Nombre del archivo de entrada
-- `longitud_A`: Longitud de la primera secuencia
-- `longitud_B`: Longitud de la segunda secuencia
-- `match`: Parámetro de puntuación usado
-- `mismatch`: Parámetro de puntuación usado
-- `gap`: Parámetro de puntuación usado
-- `tiempo_init_ms`: Tiempo de inicialización (ms)
-- `tiempo_llenado_ms`: Tiempo de llenado de la matriz DP (ms)
-- `tiempo_traceback_ms`: Tiempo de traceback (ms)
-- `tiempo_total_ms`: Tiempo total de ejecución (ms)
-- `puntuacion`: Puntuación final del alineamiento
-
-### Archivo FASTA (`main-gen-secuencia`)
-
-El generador crea archivos FASTA estándar con dos secuencias:
-```
->sec1
-ATGCGATCGATCG...
->sec2
-ATGCGATCGATCG...
-```
-
-## Optimización
-
-Los programas se compilan con optimización `-O3` para máximo rendimiento. Esto es especialmente útil para:
-- Secuencias largas
-- Ejecuciones repetidas para benchmarking
-- Comparación de rendimiento
+Para más información, consulta `EXTRAE_GUIA.md` en el directorio raíz del proyecto.
 
 ## Estructura del Proyecto
 
 ```
-AlgNW/
-├── include/              # Archivos de cabecera (.h)
-│   ├── tipos.h
-│   ├── puntuacion.h
-│   ├── secuencial.h
-│   ├── paralelo.h
-│   ├── generador_secuencias.h
-│   └── utilidades.h
-├── src/                  # Archivos fuente (.cpp)
-│   ├── secuencial.cpp
-│   ├── paralelo.cpp
-│   ├── puntuacion.cpp
-│   ├── generador_secuencias.cpp
-│   └── utilidades.cpp
-├── main-secuencial.cpp   # Programa principal secuencial
-├── main-gen-secuencia.cpp # Programa generador
-├── Makefile              # Archivo de compilación
-├── generar_datos.sh      # Script para generar datos de benchmarking
-├── ejecutar_promedio.sh  # Script para ejecutar con promedios
-├── benchmark_todos.sh    # Script para ejecutar benchmarks de todos los archivos
-├── analizar_benchmark.py # Script de análisis y visualización en Python
-├── requirements.txt      # Dependencias de Python para el análisis
-├── README.md             # Este archivo
-├── bin/                  # Directorio de ejecutables (generado)
-├── datos/                # Directorio de datos generados (generado)
-├── resultados_benchmark/ # Directorio de resultados CSV (generado)
-└── graficos_benchmark/   # Directorio de gráficos generados (generado)
+srcv2/
+├── secuencial.h / secuencial.cpp # Algoritmo secuencial
+├── paralelo.h / paralelo.cpp     # Algoritmos paralelos
+├── puntuacion.h / puntuacion.cpp # Sistema de puntuación DNA
+├── generador_secuencias.h / .cpp # Generador de secuencias
+├── tipos.h                       # Estructuras de datos
+├── utilidades.h / utilidades.cpp # Funciones auxiliares
+├── main-secuencial.cpp           # Programa secuencial
+├── main-paralelo.cpp             # Programa paralelo
+├── main-gen-secuencia.cpp        # Generador de secuencias
+├── generar-datos.sh              # Script para generar datos
+├── ejecutar-benchmark.sh         # Script para benchmark completo
+└── Makefile                      # Sistema de compilación
 ```
 
-## Scripts de Ejecución de Benchmarks
-
-### Para Notebook (casos pequeños)
+## Ejemplo Completo
 
 ```bash
-# Generar casos
-./generar_casos_notebook.sh
+# 1. Compilar
+make
 
-# Ejecutar benchmark sin Extrae
-./ejecutar_benchmark_notebook.sh datos 3 no
+# 2. Generar datos
+./generar-datos.sh
 
-# Ejecutar benchmark con Extrae/Paraver
-./ejecutar_benchmark_notebook.sh datos 3 si
+# 3. Ejecutar benchmark
+export OMP_NUM_THREADS=8
+./ejecutar-benchmark.sh
+
+# 4. Ver resultados
+cat resultados/resultados_completo.csv
 ```
-
-### Para Servidor (casos grandes)
-
-```bash
-# Generar casos (con advertencia de memoria)
-./generar_casos_servidor.sh
-
-# Ejecutar benchmark completo
-./ejecutar_benchmark_servidor.sh datos 5
-```
-
-⚠️ **Nota**: El script de servidor muestra advertencias de memoria antes de ejecutar.
-
-## Análisis de Rendimiento
-
-Para análisis detallado del comportamiento de las implementaciones paralelas, hay varias herramientas disponibles:
-
-### Opciones Disponibles
-
-1. **Intel VTune Profiler** ⭐ (Recomendado para Windows)
-   ```bash
-   ./ejecutar_vtune.sh datos/test_500.fasta threading 1
-   ```
-
-2. **Extrae/Paraver** (Linux, Open Source)
-   ```bash
-   ./ejecutar_extrae.sh datos/test_500.fasta antidiagonal_static 1
-   paraver traces/nw_trace_*.prv
-   ```
-
-3. **perf + FlameGraph** (Linux, simple y rápido)
-   ```bash
-   ./ejecutar_perf.sh datos/test_500.fasta 1
-   ```
-
-Ver `HERRAMIENTAS_ANALISIS.md` para comparación completa de todas las herramientas disponibles.
 
 ## Notas
 
-- Asegúrate de que el archivo FASTA tenga al menos 2 secuencias antes de ejecutar `main-secuencial`
-- Los tiempos se miden en milisegundos (ms)
-- El programa secuencial muestra información detallada en la consola además de guardar en CSV
-- Para grandes volúmenes de datos, considera usar el modo batch del generador
-
+- El proyecto está optimizado para secuencias DNA únicamente
+- Los algoritmos paralelos usan `schedule(runtime)` para leer `OMP_SCHEDULE`
+- El benchmark completo puede tardar considerablemente según el hardware
+- Los resultados incluyen tiempos de inicialización, llenado de matriz y traceback
+- Los eventos de Extrae están implementados y se activan automáticamente si se compila con soporte de Extrae
 
