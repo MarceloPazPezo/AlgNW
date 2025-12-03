@@ -147,8 +147,9 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
  * Solo paraleliza la fase 2 (llenado de matriz).
  * 
  * MEJORAS IMPLEMENTADAS:
- * - Tamaño de bloque adaptativo basado en número de threads disponibles
- * - Paralelización del loop interno del bloque usando collapse(2)
+ * - Tamaño de bloque optimizado para arquitectura de caché (64-128 elementos)
+ * - Permite que múltiples bloques vivan en L2 simultáneamente, reduciendo conflictos
+ * - Tamaño adaptativo basado en número de threads disponibles
  * - Variables firstprivate para evitar false sharing
  * - Mejor especificación de variables compartidas/privadas
  * 
@@ -165,9 +166,15 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
     int m = secA.length();
     int n = secB.length();
     int num_threads = omp_get_max_threads();
-    int tam_bloque = std::max(32, std::min(m, n) / (num_threads * 4));
-    if (tam_bloque < 32) tam_bloque = 32;
-    if (tam_bloque > 256) tam_bloque = 256;
+    // Optimización basada en arquitectura de caché:
+    // - L2: 256 KB, L3: 8 MB compartida entre 4 núcleos
+    // - Bloque de 256x256 = 256 KB (exactamente L2) causa conflictos con múltiples threads
+    // - Bloques de 64-128 elementos (16-64 KB) permiten que múltiples bloques vivan en L2
+    // - Esto reduce conflictos de caché y mejora el paralelismo
+    int tam_bloque = std::min(m, n) / (num_threads * 2);
+    // Límites: mínimo 64 (cabe en L1d), máximo 128 (múltiples bloques en L2)
+    if (tam_bloque < 64) tam_bloque = 64;
+    if (tam_bloque > 128) tam_bloque = 128;
     int num_bloques_i = (m + tam_bloque - 1) / tam_bloque;
     int num_bloques_j = (n + tam_bloque - 1) / tam_bloque;
     

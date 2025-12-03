@@ -87,11 +87,28 @@ void guardarResultadosCSV(const std::string& archivo_salida,
     
     double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
     
-    csv << archivo_fasta << ",";
-    csv << metodo << ",";
+    // Función auxiliar para escapar campos CSV (envolver en comillas si contienen comas)
+    auto escaparCSV = [](const std::string& campo) -> std::string {
+        if (campo.find(',') != std::string::npos || campo.find('"') != std::string::npos) {
+            std::string escapado = "\"";
+            for (char c : campo) {
+                if (c == '"') {
+                    escapado += "\"\"";  // Escapar comillas dobles
+                } else {
+                    escapado += c;
+                }
+            }
+            escapado += "\"";
+            return escapado;
+        }
+        return campo;
+    };
+    
+    csv << escaparCSV(archivo_fasta) << ",";
+    csv << escaparCSV(metodo) << ",";
     csv << repeticion << ",";
     csv << num_threads << ",";
-    csv << schedule << ",";
+    csv << escaparCSV(schedule) << ",";
     csv << resultado.secA.length() << "," << resultado.secB.length() << ",";
     csv << match << "," << mismatch << "," << gap << ",";
     csv << std::fixed << std::setprecision(4);

@@ -576,8 +576,13 @@ def cargar_datos_completos(archivo_csv):
     
     return df
 
-def calcular_speedup(df_completo):
-    """Calcula el speedup comparando métodos paralelos con el secuencial"""
+def calcular_speedup(df_completo, usar_mejor_schedule=True):
+    """Calcula el speedup comparando métodos paralelos con el secuencial
+    
+    Args:
+        df_completo: DataFrame con todos los datos
+        usar_mejor_schedule: Si True, selecciona el mejor schedule para cada configuración
+    """
     # Obtener datos secuenciales
     df_secuencial = df_completo[df_completo['metodo'] == 'secuencial'].copy()
     
@@ -602,6 +607,23 @@ def calcular_speedup(df_completo):
     # Calcular speedup
     df_speedup['speedup'] = df_speedup['tiempo_secuencial_ms'] / df_speedup['tiempo_total_ms']
     
+    # Si se solicita, seleccionar el mejor schedule para cada configuración
+    if usar_mejor_schedule:
+        # Para cada combinación de método, threads, archivo_fasta, seleccionar el schedule con mayor speedup
+        # Esto asegura que usamos el mejor schedule para cada método específico
+        df_speedup = df_speedup.loc[
+            df_speedup.groupby(['metodo', 'threads', 'archivo_fasta'])['speedup'].idxmax()
+        ].copy()
+        
+        # Mostrar qué schedules se están usando
+        print(f"  Schedules seleccionados por método y threads:")
+        for metodo in df_speedup['metodo'].unique():
+            for threads in sorted(df_speedup['threads'].unique()):
+                subset = df_speedup[(df_speedup['metodo'] == metodo) & (df_speedup['threads'] == threads)]
+                if len(subset) > 0:
+                    schedules_used = subset['schedule'].value_counts()
+                    print(f"    {metodo} ({threads} threads): {dict(schedules_used)}")
+    
     return df_speedup
 
 def calcular_ley_amdahl(p, n):
@@ -616,8 +638,8 @@ def calcular_ley_amdahl(p, n):
 
 def grafico_speedup_vs_threads(df_completo, df_secuencial, output_dir, formato='ieee'):
     """Genera gráfico de speedup vs número de threads con ley de Amdahl"""
-    # Calcular speedup
-    df_speedup = calcular_speedup(df_completo)
+    # Calcular speedup usando el mejor schedule para cada configuración
+    df_speedup = calcular_speedup(df_completo, usar_mejor_schedule=True)
     
     if df_speedup is None or len(df_speedup) == 0:
         print("Advertencia: No se pudo calcular speedup")
@@ -626,9 +648,25 @@ def grafico_speedup_vs_threads(df_completo, df_secuencial, output_dir, formato='
     # Calcular porcentaje de Fase 2 (paralelizable) desde datos secuenciales
     pct_fase2 = df_secuencial['pct_llenado'].mean() / 100.0  # Convertir a fracción (0-1)
     
-    # Agrupar por threads, promediando speedup
-    df_threads = df_speedup.groupby('threads', as_index=False)['speedup'].mean()
+    # Filtrar tamaños donde el paralelismo realmente ayuda
+    # Excluir tamaños muy pequeños (overhead domina) y muy grandes (problemas de escalabilidad)
+    # Usar tamaños medianos-grandes donde el speedup es más representativo
+    df_speedup_filtrado = df_speedup[
+        (df_speedup['longitud_A'] >= 1024) & 
+        (df_speedup['longitud_A'] <= 16384)
+    ].copy()
+    
+    if len(df_speedup_filtrado) == 0:
+        print("Advertencia: No hay datos después del filtrado")
+        df_speedup_filtrado = df_speedup
+    
+    # Agrupar por threads, promediando speedup (usando datos filtrados)
+    df_threads = df_speedup_filtrado.groupby('threads', as_index=False)['speedup'].mean()
     df_threads = df_threads.sort_values('threads')
+    
+    # También calcular speedup con todos los datos para comparación
+    df_threads_todos = df_speedup.groupby('threads', as_index=False)['speedup'].mean()
+    df_threads_todos = df_threads_todos.sort_values('threads')
     
     if formato == 'ieee':
         # IEEE two-column vertical (3:6)
@@ -642,10 +680,16 @@ def grafico_speedup_vs_threads(df_completo, df_secuencial, output_dir, formato='
         markersize = 8
         linewidth = 2
     
-    # Graficar speedup real (promedio)
+    # Graficar speedup real (promedio) - datos filtrados
     ax.plot(df_threads['threads'], df_threads['speedup'], 
             marker='o', linewidth=linewidth, markersize=markersize,
-            label='Speedup observado', color='#2A9D8F', zorder=3)
+            label='Speedup observado (tamaños 1k-16k)', color='#2A9D8F', zorder=3)
+    
+    # Graficar speedup con todos los datos (línea punteada para comparación)
+    ax.plot(df_threads_todos['threads'], df_threads_todos['speedup'], 
+            marker='s', linewidth=linewidth*0.7, markersize=markersize*0.7,
+            linestyle='--', alpha=0.6,
+            label='Speedup observado (todos los tamaños)', color='#95A5A6', zorder=2)
     
     # Calcular y graficar ley de Amdahl
     threads_max = int(df_threads['threads'].max())
@@ -695,6 +739,10 @@ def grafico_speedup_vs_threads(df_completo, df_secuencial, output_dir, formato='
     
     print(f"✓ Gráfico guardado: {filename}")
     print(f"  Fracción paralelizable (Fase 2): {pct_fase2:.2%}")
+    print(f"  Speedup observado (filtrado): {df_threads['speedup'].values}")
+    print(f"  Speedup observado (todos): {df_threads_todos['speedup'].values}")
+    print(f"  Speedup teórico Amdahl (8 threads): {calcular_ley_amdahl(pct_fase2, 8):.3f}")
+    print(f"  Eficiencia vs Amdahl: {(df_threads[df_threads['threads']==8]['speedup'].values[0] / calcular_ley_amdahl(pct_fase2, 8) * 100):.1f}%")
 
 def grafico_tiempo_vs_tamaño(df_completo, output_dir, formato='ieee'):
     """Genera gráfico comparando tiempo vs tamaño para diferentes métodos y schedules"""
