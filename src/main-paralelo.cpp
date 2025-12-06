@@ -3,10 +3,10 @@
  * @brief Programa de benchmarking para comparar implementaciones secuencial y paralelas (DNA)
  * 
  * Uso:
- *   ./main-paralelo -f archivo.fasta -p <match> <mismatch> <gap> [-r <repeticiones>] [-o salida.csv]
+ *   ./main-paralelo -f archivo.fasta -p <match> <mismatch> <gap> [-s] [-a] [-b] [-o salida.csv]
  * 
  * Ejemplo:
- *   ./main-paralelo -f data/test.fasta -p 2 -1 -2 -r 5 -o resultados.csv
+ *   ./main-paralelo -f data/test.fasta -p 2 -1 -2 -a -b -o resultados.csv
  */
 
 #include <iostream>
@@ -143,18 +143,16 @@ void mostrarUso(const char* nombre_programa) {
     std::cout << "Opciones:\n";
     std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias DNA (OBLIGATORIO)\n";
     std::cout << "  -p <match> <mismatch> <gap>   Parametros de puntuacion (OBLIGATORIO)\n";
-    std::cout << "  -m <metodo>           Método específico a ejecutar [default: todos]\n";
-    std::cout << "                        Opciones: secuencial, antidiagonal, bloques\n";
+    std::cout << "  -s                    Ejecutar método secuencial\n";
+    std::cout << "  -a                    Ejecutar método antidiagonal (schedule desde OMP_SCHEDULE)\n";
+    std::cout << "  -b                    Ejecutar método bloques (schedule desde OMP_SCHEDULE)\n";
     std::cout << "  -o <archivo.csv>      Archivo de salida CSV [default: benchmark.csv]\n";
     std::cout << "  -h, --help           Mostrar esta ayuda\n\n";
     std::cout << "Ejemplos:\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -o resultados.csv\n\n";
-    std::cout << "Metodos comparados:\n";
-    std::cout << "  - secuencial\n";
-    std::cout << "  - antidiagonal (schedule desde OMP_SCHEDULE)\n";
-    std::cout << "  - bloques (schedule desde OMP_SCHEDULE)\n";
-    std::cout << "\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -a -b\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -s -a -o resultados.csv\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -b -o resultados.csv\n\n";
+    std::cout << "NOTA: Debe especificar al menos un método (-s, -a, o -b)\n";
     std::cout << "NOTA: Configure OMP_NUM_THREADS y OMP_SCHEDULE para controlar paralelización:\n";
     std::cout << "  export OMP_NUM_THREADS=8\n";
     std::cout << "  export OMP_SCHEDULE=\"dynamic,1\"\n";
@@ -167,7 +165,9 @@ int main(int argc, char* argv[]) {
     
     std::string archivo_fasta = "";
     std::string archivo_salida = "benchmark.csv";
-    std::string metodo_seleccionado = "";  // Para seleccionar un método específico
+    bool ejecutar_secuencial = false;
+    bool ejecutar_antidiagonal = false;
+    bool ejecutar_bloques = false;
     int match = 0, mismatch = 0, gap = 0;
     bool parametros_validos = false;
     
@@ -180,8 +180,14 @@ int main(int argc, char* argv[]) {
         else if (arg == "-o" && i + 1 < argc) {
             archivo_salida = argv[++i];
         }
-        else if (arg == "-m" && i + 1 < argc) {
-            metodo_seleccionado = argv[++i];
+        else if (arg == "-s") {
+            ejecutar_secuencial = true;
+        }
+        else if (arg == "-a") {
+            ejecutar_antidiagonal = true;
+        }
+        else if (arg == "-b") {
+            ejecutar_bloques = true;
         }
         else if (arg == "-p" && i + 3 < argc) {
             match = std::atoi(argv[++i]);
@@ -217,10 +223,21 @@ int main(int argc, char* argv[]) {
     std::string secA = secuencias[0];
     std::string secB = secuencias[1];
     
+    // Validar que se haya especificado al menos un método
+    if (!ejecutar_secuencial && !ejecutar_antidiagonal && !ejecutar_bloques) {
+        std::cerr << "Error: Debe especificar al menos un método (-s, -a, o -b)\n\n";
+        mostrarUso(argv[0]);
+        return 1;
+    }
+    
     std::cout << "Secuencia A: " << secA.length() << " caracteres\n";
     std::cout << "Secuencia B: " << secB.length() << " caracteres\n";
     std::cout << "Parametros: match=" << match << ", mismatch=" << mismatch << ", gap=" << gap << "\n";
-    std::cout << "Repeticiones por metodo: " << repeticiones << "\n";
+    std::cout << "Metodos seleccionados: ";
+    if (ejecutar_secuencial) std::cout << "secuencial ";
+    if (ejecutar_antidiagonal) std::cout << "antidiagonal ";
+    if (ejecutar_bloques) std::cout << "bloques ";
+    std::cout << "\n";
     
     std::cout << "\n=== CONFIGURACIÓN OPENMP ===\n";
     const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
@@ -245,39 +262,19 @@ int main(int argc, char* argv[]) {
         std::function<ResultadoAlineamiento(const std::string&, const std::string&, const ConfiguracionAlineamiento&)> funcion;
     };
     
-    std::vector<MetodoPrueba> todos_metodos = {
-        {"secuencial", AlgNW},
-        
-        {"antidiagonal", alineamientoNWParaleloAntidiagonal},
-        
-        {"bloques", alineamientoNWParaleloBloques}
-    };
-    
     std::vector<MetodoPrueba> metodos;
-    if (!metodo_seleccionado.empty()) {
-        bool encontrado = false;
-        for (const auto& m : todos_metodos) {
-            if (m.nombre == metodo_seleccionado) {
-                metodos.push_back(m);
-                encontrado = true;
-                break;
-            }
-        }
-        if (!encontrado) {
-            std::cerr << "Error: Método '" << metodo_seleccionado << "' no encontrado.\n";
-            std::cerr << "Métodos disponibles:\n";
-            for (const auto& m : todos_metodos) {
-                std::cerr << "  - " << m.nombre << "\n";
-            }
-            return 1;
-        }
-    } else {
-        metodos = todos_metodos;
+    if (ejecutar_secuencial) {
+        metodos.push_back({"secuencial", AlgNW});
+    }
+    if (ejecutar_antidiagonal) {
+        metodos.push_back({"antidiagonal", alineamientoNWParaleloAntidiagonal});
+    }
+    if (ejecutar_bloques) {
+        metodos.push_back({"bloques", alineamientoNWParaleloBloques});
     }
     
     std::cout << "=== EJECUTANDO BENCHMARK ===\n";
-    std::cout << "Metodos: " << metodos.size() << "\n";
-    std::cout << "Total de ejecuciones: " << metodos.size() << "\n\n";
+    std::cout << "Metodos a ejecutar: " << metodos.size() << "\n\n";
     
     int num_threads = omp_get_max_threads();
     std::string schedule_str = "N/A";
@@ -305,23 +302,6 @@ int main(int argc, char* argv[]) {
     
     std::cout << "=== BENCHMARK COMPLETADO ===\n";
     std::cout << "Resultados guardados en: " << archivo_salida << "\n";
-    
-    if (metodos.size() > 1 && repeticiones > 0) {
-        std::cout << "\n=== COMPARACIÓN DE RESULTADOS ===\n";
-        
-        ResultadoAlineamiento resultado_secuencial = ejecutarConLimpiezaCache(
-            AlgNW, secA, secB, config);
-        ResultadoAlineamiento resultado_antidiagonal = ejecutarConLimpiezaCache(
-            alineamientoNWParaleloAntidiagonal, secA, secB, config);
-        ResultadoAlineamiento resultado_bloques = ejecutarConLimpiezaCache(
-            alineamientoNWParaleloBloques, secA, secB, config);
-        
-        compararResultados(resultado_secuencial, resultado_antidiagonal, 
-                          "secuencial", "antidiagonal");
-        
-        compararResultados(resultado_secuencial, resultado_bloques, 
-                          "secuencial", "bloques");
-    }
     
     return 0;
 }

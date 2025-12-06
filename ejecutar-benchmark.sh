@@ -79,7 +79,7 @@ done
 ARCHIVO_SALIDA="$RESULTADOS_DIR/$ARCHIVO_SALIDA_CSV"
 
 # Tamaños en potencias de 2
-declare -a CASOS=("128" "256" "512" "1k" "2k" "4k" "8k" "16k" "32k")
+declare -a CASOS=("128" "256" "512" "1k" "2k" "4k" "8k" "16k")
 
 # Hilos a probar (NO empezar desde 1, no tiene sentido para paralelo)
 declare -a HILOS=(2 4 6 8)
@@ -88,12 +88,12 @@ declare -a HILOS=(2 4 6 8)
 declare -a CONFIGURACIONES=(
     "antidiagonal:static"
     "antidiagonal:static,1"
-    "antidiagonal:dynamic,1"
-    "antidiagonal:guided,1"
+    "antidiagonal:dynamic"
+    "antidiagonal:guided"
     "bloques:static"
     "bloques:static,1"
-    "bloques:dynamic,1"
-    "bloques:guided,1"
+    "bloques:dynamic"
+    "bloques:guided"
 )
 
 # Parámetros de puntuación
@@ -131,7 +131,7 @@ echo "  Archivo de salida: $ARCHIVO_SALIDA"
 if [ -n "$REPETICIONES_FORZADAS" ]; then
     echo -e "  ${YELLOW}Repeticiones: $REPETICIONES_FORZADAS (forzado para todos los tamaños)${NC}"
 else
-    echo "  Repeticiones: según tamaño (128-512: 10, 1k-4k: 5, 8k-16k: 3, 32k: 2)"
+    echo "  Repeticiones: según tamaño (128-512: 10, 1k-4k: 5, 8k-16k: 3)"
 fi
 echo "  Tamaños: ${CASOS[*]}"
 echo "  Threads: ${HILOS[*]}"
@@ -159,9 +159,6 @@ obtener_repeticiones() {
         "8k"|"16k")
             echo 3
             ;;
-        "32k")
-            echo 2
-            ;;
         *)
             echo 3
             ;;
@@ -180,7 +177,6 @@ caso_a_longitud() {
         "4k") echo 4096 ;;
         "8k") echo 8192 ;;
         "16k") echo 16384 ;;
-        "32k") echo 32768 ;;
         *) echo "$caso" ;;
     esac
 }
@@ -201,6 +197,7 @@ for caso in "${CASOS[@]}"; do
     echo -e "${BLUE}========================================${NC}"
     
     # 1. Ejecutar SECUENCIAL (baseline) - N repeticiones
+    # NOTA: main-secuencial no acepta flags, solo se ejecuta directamente
     echo -e "${YELLOW}>>> Ejecutando SECUENCIAL ($REPS repeticiones)...${NC}"
     for ((r=1; r<=$REPS; r++)); do
         echo -ne "   Repetición $r/$REPS... "
@@ -229,9 +226,22 @@ for caso in "${CASOS[@]}"; do
             echo -e "   Threads: $t (${REPS} repeticiones)..."
             
             # Ejecutar main-paralelo con método específico - N repeticiones
+            # Convertir nombre del método a flag: antidiagonal -> -a, bloques -> -b
+            case "$metodo" in
+                "antidiagonal")
+                    METODO_FLAG="-a"
+                    ;;
+                "bloques")
+                    METODO_FLAG="-b"
+                    ;;
+                *)
+                    METODO_FLAG="-m $metodo"  # Fallback (no debería ocurrir)
+                    ;;
+            esac
+            
             for ((r=1; r<=$REPS; r++)); do
                 echo -ne "      Rep $r/$REPS... "
-                ./bin/main-paralelo -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -m "$metodo" -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
+                ./bin/main-paralelo -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP $METODO_FLAG -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
             
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}OK${NC}"

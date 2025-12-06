@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script para generar casos de prueba DNA para benchmarking
-# Genera longitudes en potencias de 2: 128, 256, 512, 1k, 2k, 4k, 8k, 16k, 32k
+# Genera longitudes en potencias de 2: 128, 256, 512, 1k, 2k, 4k, 8k, 16k
 # Versión simplificada solo para DNA
 
 # Colores para output
@@ -29,7 +29,6 @@ declare -a LONGITUDES=(
     "4k 4096"
     "8k 8192"
     "16k 16384"
-    "32k 32768"
 )
 
 # Función para mostrar ayuda
@@ -37,7 +36,7 @@ mostrar_ayuda() {
     echo "Uso: $0 [opciones]"
     echo ""
     echo "Genera archivos FASTA DNA para benchmarking."
-    echo "Longitudes (potencias de 2): 128, 256, 512, 1k, 2k, 4k, 8k, 16k, 32k"
+    echo "Longitudes (potencias de 2): 128, 256, 512, 1k, 2k, 4k, 8k, 16k"
     echo ""
     echo "Opciones:"
     echo "  -s, --similitud <valor>   Similitud objetivo (0.0 - 1.0) [default: 0.9]"
@@ -141,7 +140,7 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 echo "Directorio de salida: $OUTPUT_DIR"
 echo "Similitud objetivo: $SIMILITUD"
-echo "Longitudes (potencias de 2): 128, 256, 512, 1k, 2k, 4k, 8k, 16k, 32k"
+echo "Longitudes (potencias de 2): 128, 256, 512, 1k, 2k, 4k, 8k, 16k"
 echo ""
 
 TOTAL=0
