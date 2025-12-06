@@ -143,14 +143,13 @@ void mostrarUso(const char* nombre_programa) {
     std::cout << "Opciones:\n";
     std::cout << "  -f <archivo.fasta>    Archivo FASTA con las secuencias DNA (OBLIGATORIO)\n";
     std::cout << "  -p <match> <mismatch> <gap>   Parametros de puntuacion (OBLIGATORIO)\n";
-    std::cout << "  -r <numero>           Numero de repeticiones por metodo [default: 1]\n";
     std::cout << "  -m <metodo>           Método específico a ejecutar [default: todos]\n";
     std::cout << "                        Opciones: secuencial, antidiagonal, bloques\n";
     std::cout << "  -o <archivo.csv>      Archivo de salida CSV [default: benchmark.csv]\n";
     std::cout << "  -h, --help           Mostrar esta ayuda\n\n";
     std::cout << "Ejemplos:\n";
     std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2\n";
-    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -r 5 -o resultados.csv\n\n";
+    std::cout << "  " << nombre_programa << " -f data/test.fasta -p 2 -1 -2 -o resultados.csv\n\n";
     std::cout << "Metodos comparados:\n";
     std::cout << "  - secuencial\n";
     std::cout << "  - antidiagonal (schedule desde OMP_SCHEDULE)\n";
@@ -170,7 +169,6 @@ int main(int argc, char* argv[]) {
     std::string archivo_salida = "benchmark.csv";
     std::string metodo_seleccionado = "";  // Para seleccionar un método específico
     int match = 0, mismatch = 0, gap = 0;
-    int repeticiones = 1;
     bool parametros_validos = false;
     
     for (int i = 1; i < argc; ++i) {
@@ -181,13 +179,6 @@ int main(int argc, char* argv[]) {
         }
         else if (arg == "-o" && i + 1 < argc) {
             archivo_salida = argv[++i];
-        }
-        else if (arg == "-r" && i + 1 < argc) {
-            repeticiones = std::atoi(argv[++i]);
-            if (repeticiones < 1) {
-                std::cerr << "Error: El número de repeticiones debe ser >= 1\n";
-                return 1;
-            }
         }
         else if (arg == "-m" && i + 1 < argc) {
             metodo_seleccionado = argv[++i];
@@ -286,7 +277,7 @@ int main(int argc, char* argv[]) {
     
     std::cout << "=== EJECUTANDO BENCHMARK ===\n";
     std::cout << "Metodos: " << metodos.size() << "\n";
-    std::cout << "Total de ejecuciones: " << (metodos.size() * repeticiones) << "\n\n";
+    std::cout << "Total de ejecuciones: " << metodos.size() << "\n\n";
     
     int num_threads = omp_get_max_threads();
     std::string schedule_str = "N/A";
@@ -297,23 +288,20 @@ int main(int argc, char* argv[]) {
     
     for (const auto& metodo : metodos) {
         std::cout << "--- Metodo: " << metodo.nombre << " ---\n";
+        std::cout << "  Ejecutando... ";
+        std::cout.flush();
         
-        for (int r = 1; r <= repeticiones; ++r) {
-            std::cout << "  Repeticion " << r << "/" << repeticiones << "... ";
-            std::cout.flush();
-            
-            ResultadoAlineamiento resultado = ejecutarConLimpiezaCache(
-                metodo.funcion, secA, secB, config);
-            
-            guardarResultadosCSV(archivo_salida, archivo_fasta, metodo.nombre, 
-                               resultado, match, mismatch, gap, r, num_threads, schedule_str);
-            
-            double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
-            std::cout << "Tiempo: " << std::fixed << std::setprecision(2) 
-                      << tiempo_total << " ms, Puntuacion: " << resultado.puntuacion << "\n";
-        }
-        std::cout << "\n";
+        ResultadoAlineamiento resultado = ejecutarConLimpiezaCache(
+            metodo.funcion, secA, secB, config);
+        
+        guardarResultadosCSV(archivo_salida, archivo_fasta, metodo.nombre, 
+                           resultado, match, mismatch, gap, 1, num_threads, schedule_str);
+        
+        double tiempo_total = resultado.tiempo_fase1_ms + resultado.tiempo_fase2_ms + resultado.tiempo_fase3_ms;
+        std::cout << "Tiempo: " << std::fixed << std::setprecision(2) 
+                  << tiempo_total << " ms, Puntuacion: " << resultado.puntuacion << "\n";
     }
+    std::cout << "\n";
     
     std::cout << "=== BENCHMARK COMPLETADO ===\n";
     std::cout << "Resultados guardados en: " << archivo_salida << "\n";

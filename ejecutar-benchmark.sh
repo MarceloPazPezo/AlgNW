@@ -2,18 +2,81 @@
 
 # Script para ejecutar benchmark completo: secuencial y paralelo
 # Itera sobre diferentes tamaños, threads y schedules
+#
+# Uso:
+#   ./ejecutar-benchmark.sh [opciones]
+#
+# Opciones:
+#   -d, --datos DIR         Directorio con archivos FASTA [default: datos]
+#   -o, --output DIR        Directorio de salida para resultados [default: resultados]
+#   -f, --file FILE         Nombre del archivo CSV de salida [default: resultados_completo.csv]
+#   -r, --repeticiones N    Número de repeticiones para todos los tamaños [default: según tamaño]
+#   -h, --help             Mostrar esta ayuda
+#
+# Ejemplos:
+#   ./ejecutar-benchmark.sh
+#   ./ejecutar-benchmark.sh -o mis_resultados -f benchmark.csv
+#   ./ejecutar-benchmark.sh -d datos -o resultados -r 10
 
 # Colores para output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Configuración
+# Valores por defecto
 DATOS_DIR="datos"
 RESULTADOS_DIR="resultados"
-ARCHIVO_SALIDA="$RESULTADOS_DIR/resultados_completo.csv"
+ARCHIVO_SALIDA_CSV="resultados_completo.csv"
+REPETICIONES_FORZADAS=""  # Vacío significa usar la función obtener_repeticiones()
+
+# Parsear argumentos de línea de comandos
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -d|--datos)
+            DATOS_DIR="$2"
+            shift 2
+            ;;
+        -o|--output)
+            RESULTADOS_DIR="$2"
+            shift 2
+            ;;
+        -f|--file)
+            ARCHIVO_SALIDA_CSV="$2"
+            shift 2
+            ;;
+        -r|--repeticiones)
+            REPETICIONES_FORZADAS="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Uso: $0 [opciones]"
+            echo ""
+            echo "Opciones:"
+            echo "  -d, --datos DIR         Directorio con archivos FASTA [default: datos]"
+            echo "  -o, --output DIR        Directorio de salida para resultados [default: resultados]"
+            echo "  -f, --file FILE         Nombre del archivo CSV de salida [default: resultados_completo.csv]"
+            echo "  -r, --repeticiones N    Número de repeticiones para todos los tamaños [default: según tamaño]"
+            echo "  -h, --help             Mostrar esta ayuda"
+            echo ""
+            echo "Ejemplos:"
+            echo "  $0"
+            echo "  $0 -o mis_resultados -f benchmark.csv"
+            echo "  $0 -d datos -o resultados -r 10"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Error: Opción desconocida: $1${NC}"
+            echo "Usa -h o --help para ver la ayuda"
+            exit 1
+            ;;
+    esac
+done
+
+# Construir ruta completa del archivo de salida
+ARCHIVO_SALIDA="$RESULTADOS_DIR/$ARCHIVO_SALIDA_CSV"
 
 # Tamaños en potencias de 2
 declare -a CASOS=("128" "256" "512" "1k" "2k" "4k" "8k" "16k" "32k")
@@ -61,17 +124,31 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}BENCHMARK COMPLETO${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Directorio de datos: $DATOS_DIR"
-echo "Directorio de resultados: $RESULTADOS_DIR"
-echo "Archivo de salida: $ARCHIVO_SALIDA"
-echo "Tamaños: ${CASOS[*]}"
-echo "Threads: ${HILOS[*]}"
-echo "Parámetros: match=$MATCH, mismatch=$MISMATCH, gap=$GAP"
+echo -e "${CYAN}Configuración:${NC}"
+echo "  Directorio de datos: $DATOS_DIR"
+echo "  Directorio de resultados: $RESULTADOS_DIR"
+echo "  Archivo de salida: $ARCHIVO_SALIDA"
+if [ -n "$REPETICIONES_FORZADAS" ]; then
+    echo -e "  ${YELLOW}Repeticiones: $REPETICIONES_FORZADAS (forzado para todos los tamaños)${NC}"
+else
+    echo "  Repeticiones: según tamaño (128-512: 10, 1k-4k: 5, 8k-16k: 3, 32k: 2)"
+fi
+echo "  Tamaños: ${CASOS[*]}"
+echo "  Threads: ${HILOS[*]}"
+echo "  Parámetros: match=$MATCH, mismatch=$MISMATCH, gap=$GAP"
 echo ""
 
 # Función para obtener número de repeticiones según tamaño
 obtener_repeticiones() {
     local caso=$1
+    
+    # Si se especificó un número forzado, usarlo para todos
+    if [ -n "$REPETICIONES_FORZADAS" ]; then
+        echo "$REPETICIONES_FORZADAS"
+        return
+    fi
+    
+    # Valores por defecto según tamaño
     case "$caso" in
         "128"|"256"|"512")
             echo 10
@@ -123,17 +200,20 @@ for caso in "${CASOS[@]}"; do
     echo -e "${BLUE}Dataset: dna_${caso}.fasta (Reps: $REPS)${NC}"
     echo -e "${BLUE}========================================${NC}"
     
-    # 1. Ejecutar SECUENCIAL (baseline)
-    echo -e "${YELLOW}>>> Ejecutando SECUENCIAL...${NC}"
-    ./bin/main-secuencial -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
+    # 1. Ejecutar SECUENCIAL (baseline) - N repeticiones
+    echo -e "${YELLOW}>>> Ejecutando SECUENCIAL ($REPS repeticiones)...${NC}"
+    for ((r=1; r<=$REPS; r++)); do
+        echo -ne "   Repetición $r/$REPS... "
+        ./bin/main-secuencial -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${RED}FAIL${NC}"
+        fi
+    done
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Secuencial completado${NC}"
-    else
-        echo -e "${RED}✗ Error en secuencial${NC}"
-    fi
-    
-    # 2. Ejecutar PARALELOS con diferentes configuraciones
+    # 2. Ejecutar PARALELOS con diferentes configuraciones - N repeticiones
     for config_str in "${CONFIGURACIONES[@]}"; do
         IFS=':' read -r metodo schedule <<< "$config_str"
         
@@ -146,16 +226,19 @@ for caso in "${CASOS[@]}"; do
         for t in "${HILOS[@]}"; do
             export OMP_NUM_THREADS=$t
             
-            echo -ne "   Threads: $t... "
+            echo -e "   Threads: $t (${REPS} repeticiones)..."
             
-            # Ejecutar main-paralelo con método específico
-            ./bin/main-paralelo -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -r "$REPS" -m "$metodo" -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
+            # Ejecutar main-paralelo con método específico - N repeticiones
+            for ((r=1; r<=$REPS; r++)); do
+                echo -ne "      Rep $r/$REPS... "
+                ./bin/main-paralelo -f "$ARCHIVO" -p $MATCH $MISMATCH $GAP -m "$metodo" -o "$ARCHIVO_SALIDA" > /dev/null 2>&1
             
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}OK${NC}"
-            else
-                echo -e "${RED}FAIL${NC}"
-            fi
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}OK${NC}"
+                else
+                    echo -e "${RED}FAIL${NC}"
+                fi
+            done
         done
         echo ""
     done
