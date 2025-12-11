@@ -993,7 +993,7 @@ def grafico_speedup_vs_threads(df_completo, df_secuencial, output_dir, formato='
     
     # Ajustar límite del eje Y a 10 para mejor visualización
     # Esto da más espacio para el límite teórico máximo (5.19x) y las anotaciones
-    ax.set_ylim(bottom=0, top=6)
+    ax.set_ylim(bottom=0, top=5)
     
     # Aumentar tamaño de ticks
     ax.tick_params(axis='both', labelsize=fontsize-1, width=1.5, length=6)
@@ -1095,23 +1095,31 @@ def grafico_tiempo_vs_tamaño(df_completo, output_dir, formato='ieee'):
         longitud_col = 'longitud' if 'longitud' in df_metodo.columns else 'longitud_A'
         df_metodo_agg = df_metodo.groupby(['schedule', longitud_col], as_index=False)['tiempo_total_ms'].mean()
         
-        # Calcular tiempo promedio total por schedule (promediando sobre todas las longitudes)
-        df_schedule_avg = df_metodo_agg.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
-        schedule_best = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmin(), 'schedule']
-        schedule_worst = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmax(), 'schedule']
-        
-        # Para bloques: según la tabla LaTeX, para 16k static es peor que static,1
-        # Ajustar para ser consistente: si static,1 es peor en promedio pero static es peor en 16k,
-        # usar static como peor para consistencia con la tabla
+        # Para bloques: los valores son muy similares en longitudes pequeñas,
+        # así que usamos longitudes grandes (8k y 16k) donde las diferencias son más notables
         if metodo == 'bloques':
-            # Verificar para 16k específicamente
-            df_16k = df_metodo_agg[(df_metodo_agg[longitud_col] >= 16000) & (df_metodo_agg[longitud_col] <= 17000)]
-            if len(df_16k) > 0:
-                df_16k_avg = df_16k.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
-                schedule_worst_16k = df_16k_avg.loc[df_16k_avg['tiempo_total_ms'].idxmax(), 'schedule']
-                # Si el peor en 16k es static y el peor general es static,1, usar static
-                if schedule_worst_16k == 'static' and schedule_worst == 'static,1':
-                    schedule_worst = 'static'
+            # Verificar para longitudes grandes (8k y 16k) donde las diferencias son más notables
+            df_largos = df_metodo_agg[(df_metodo_agg[longitud_col] >= 8000) & (df_metodo_agg[longitud_col] <= 17000)]
+            if len(df_largos) > 0:
+                df_largos_avg = df_largos.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
+                if len(df_largos_avg) > 0:
+                    schedule_best = df_largos_avg.loc[df_largos_avg['tiempo_total_ms'].idxmin(), 'schedule']
+                    schedule_worst = df_largos_avg.loc[df_largos_avg['tiempo_total_ms'].idxmax(), 'schedule']
+                else:
+                    # Fallback: usar promedio total
+                    df_schedule_avg = df_metodo_agg.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
+                    schedule_best = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmin(), 'schedule']
+                    schedule_worst = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmax(), 'schedule']
+            else:
+                # Fallback: usar promedio total
+                df_schedule_avg = df_metodo_agg.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
+                schedule_best = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmin(), 'schedule']
+                schedule_worst = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmax(), 'schedule']
+        else:
+            # Para antidiagonal: usar promedio total (las diferencias son más claras)
+            df_schedule_avg = df_metodo_agg.groupby('schedule', as_index=False)['tiempo_total_ms'].mean()
+            schedule_best = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmin(), 'schedule']
+            schedule_worst = df_schedule_avg.loc[df_schedule_avg['tiempo_total_ms'].idxmax(), 'schedule']
         
         # Obtener todos los schedules únicos
         schedules_unicos = sorted(df_metodo['schedule'].unique())
@@ -1140,11 +1148,25 @@ def grafico_tiempo_vs_tamaño(df_completo, output_dir, formato='ieee'):
                     etiqueta = f'{metodo.capitalize()} (peor: {schedule})'
                     zorder = 3
                 else:
-                    # Intermedio: gris, línea punteada, delgada
-                    color = '#95A5A6'
-                    estilo = '--'
-                    grosor = 1.0
-                    tam_marcador = 4
+                    # Intermedio: para bloques, usar colores más distintivos; para antidiagonal, gris
+                    if metodo == 'bloques':
+                        # Usar colores más distintivos para bloques intermedios
+                        colores_intermedios = {
+                            'dynamic': '#3498DB',  # Azul
+                            'guided': '#9B59B6',   # Púrpura
+                            'static': '#E67E22',   # Naranja
+                            'static,1': '#1ABC9C'  # Turquesa
+                        }
+                        color = colores_intermedios.get(schedule, '#95A5A6')
+                        estilo = '--'
+                        grosor = 1.5  # Un poco más grueso para mejor visibilidad
+                        tam_marcador = 6
+                    else:
+                        # Antidiagonal intermedio: gris
+                        color = '#95A5A6'
+                        estilo = '--'
+                        grosor = 1.0
+                        tam_marcador = 4
                     etiqueta = f'{metodo.capitalize()} - {schedule}'
                     zorder = 2
                 
@@ -1172,19 +1194,18 @@ def grafico_tiempo_vs_tamaño(df_completo, output_dir, formato='ieee'):
         x_max = ((x_max // 500) + 1) * 500  # Redondear hacia arriba a múltiplos de 500
         ax.set_xlim(left=x_min, right=x_max)
         
-        # Para el eje Y, limitar a 2.5 segundos para mejor visualización
-        # (aunque algunos casos extremos se salgan del rango)
-        y_max_limite = 2.5
+        # Para el eje Y, limitar a 2 segundos para mejor visualización
+        # (algunos valores exceden este límite)
+        y_max_limite = 2.0
         ax.set_ylim(bottom=0, top=y_max_limite)
         
-        # Verificar si hay valores que se salen del rango y agregar anotación si es necesario
+        # Verificar si hay valores que se salen del rango y agregar anotación
         df_paralelos_4 = df_dna[(df_dna['metodo'] != 'secuencial') & (df_dna['threads'] == threads_fijo)]
         if len(df_paralelos_4) > 0:
-            tiempos_max = df_paralelos_4.groupby(['metodo', 'schedule'])['tiempo_total_ms'].max() / 1000.0
-            valores_fuera_rango = tiempos_max[tiempos_max > y_max_limite]
-            if len(valores_fuera_rango) > 0:
-                # Agregar texto indicando que hay valores fuera del rango, algunos hasta 8.8s
-                ax.text(0.98, 0.98, 'Nota: algunos valores\nexceden 2.5s\n(hasta 8.8s)',
+            tiempo_max_real = df_paralelos_4['tiempo_total_ms'].max() / 1000.0
+            if tiempo_max_real > y_max_limite:
+                # Agregar texto indicando que hay valores fuera del rango
+                ax.text(0.98, 0.98, f'Nota: algunos valores\nexceden 2s\n(hasta {tiempo_max_real:.1f}s)',
                        transform=ax.transAxes, fontsize=fontsize-4,
                        verticalalignment='top', horizontalalignment='right',
                        bbox=dict(boxstyle='round', facecolor='yellow', alpha=0.7))

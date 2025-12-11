@@ -10,7 +10,7 @@ CXXFLAGS_PARALELO = $(CXXFLAGS) -fopenmp
 # Para habilitar: make EXTRAE=1 o export EXTRAE_HOME=/ruta/a/extrae
 ifdef EXTRAE_HOME
   EXTRAE_INC = -I$(EXTRAE_HOME)/include
-  EXTRAE_LIBS = -L$(EXTRAE_HOME)/lib -lseqtrace -lomptrace -lpttrace -lrt -lpthread -ldl
+  EXTRAE_LIBS = -L$(EXTRAE_HOME)/lib -lseqtrace -lomptrace -lrt -lpthread -ldl
   CXXFLAGS += -DHAVE_EXTRAE $(EXTRAE_INC)
   CXXFLAGS_PARALELO += -DHAVE_EXTRAE $(EXTRAE_INC)
   LDFLAGS_EXTRAE = $(EXTRAE_LIBS)
@@ -20,7 +20,7 @@ else
     EXTRAE_HOME ?= /usr
     EXTRAE_INC = -I$(EXTRAE_HOME)/include
     # Librerías de Extrae necesarias para eventos de usuario
-    EXTRAE_LIBS = -L$(EXTRAE_HOME)/lib -lseqtrace -lomptrace -lpttrace -lrt -lpthread -ldl
+    EXTRAE_LIBS = -L$(EXTRAE_HOME)/lib -lseqtrace -lomptrace  -lrt -lpthread -ldl
     CXXFLAGS += -DHAVE_EXTRAE $(EXTRAE_INC)
     CXXFLAGS_PARALELO += -DHAVE_EXTRAE $(EXTRAE_INC)
     LDFLAGS_EXTRAE = $(EXTRAE_LIBS)

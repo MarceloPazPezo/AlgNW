@@ -64,15 +64,16 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     Extrae_event(2000, 1);
 #endif
     for (int k = 2; k <= m + n; ++k) {
+#ifdef HAVE_EXTRAE
+	Extrae_event(3000, k);
+#endif
         int i_min = std::max(1, k - n);
         int i_max = std::min(m, k - 1);
-        
         #pragma omp parallel for schedule(runtime) \
             firstprivate(i_min, i_max, k, n)
         for (int i = i_min; i <= i_max; ++i) {
 #ifdef HAVE_EXTRAE
-            int thread_id = omp_get_thread_num();
-            Extrae_event(4000 + thread_id, i);
+            Extrae_event(4000, i+1);
 #endif
             int j = k - i;
             if (j >= 1 && j <= n) {
@@ -82,9 +83,12 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
                 F[i][j] = std::max({coincidencia, eliminacion, insercion});
             }
 #ifdef HAVE_EXTRAE
-            Extrae_event(5000 + thread_id, i);
+            Extrae_event(4000, 0);
 #endif
         }
+#ifdef HAVE_EXTRAE
+	Extrae_event(3000, 0);
+#endif
     }
     
     auto t_fin_fase2 = std::chrono::high_resolution_clock::now();
@@ -96,7 +100,7 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     // FASE 3: Traceback
     auto t_inicio_fase3 = std::chrono::high_resolution_clock::now();
 #ifdef HAVE_EXTRAE
-    Extrae_event(3000, 1);
+    Extrae_event(5000, 1);
 #endif
     std::string alineadaA = "";
     std::string alineadaB = "";
@@ -134,7 +138,7 @@ ResultadoAlineamiento alineamientoNWParaleloAntidiagonal(
     
     auto t_fin_fase3 = std::chrono::high_resolution_clock::now();
 #ifdef HAVE_EXTRAE
-    Extrae_event(3000, 0);
+    Extrae_event(5000, 0);
 #endif
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_fase3 - t_inicio_fase3).count();
     
@@ -206,6 +210,9 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
 #endif
     
     for (int k = 0; k <= num_bloques_i + num_bloques_j - 2; ++k) {
+#ifdef HAVE_EXTRAE
+	Extrae_event(3000, k+1);
+#endif
         std::vector<std::pair<int, int>> bloques_en_antidiagonal;
         for (int bi = 0; bi < num_bloques_i; ++bi) {
             int bj = k - bi;
@@ -218,8 +225,7 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
             firstprivate(k)
         for (size_t idx = 0; idx < bloques_en_antidiagonal.size(); ++idx) {
 #ifdef HAVE_EXTRAE
-            int thread_id = omp_get_thread_num();
-            Extrae_event(4000 + thread_id, static_cast<int>(idx));  // Muestra qué thread procesa qué bloque
+            Extrae_event(4000, static_cast<int>(idx) + 1);
 #endif
             int bi = bloques_en_antidiagonal[idx].first;
             int bj = bloques_en_antidiagonal[idx].second;
@@ -238,9 +244,12 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
                 }
             }
 #ifdef HAVE_EXTRAE
-            Extrae_event(5000 + thread_id, static_cast<int>(idx));
+            Extrae_event(4000, 0);
 #endif
         }
+#ifdef HAVE_EXTRAE
+	Extrae_event(3000, 0);
+#endif
     }
     
     auto t_fin_fase2 = std::chrono::high_resolution_clock::now();
@@ -252,7 +261,7 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
     // FASE 3: Traceback
     auto t_inicio_fase3 = std::chrono::high_resolution_clock::now();
 #ifdef HAVE_EXTRAE
-    Extrae_event(3000, 1);
+    Extrae_event(5000, 1);
 #endif
     std::string alineadaA = "";
     std::string alineadaB = "";
@@ -290,7 +299,7 @@ ResultadoAlineamiento alineamientoNWParaleloBloques(
     
     auto t_fin_fase3 = std::chrono::high_resolution_clock::now();
 #ifdef HAVE_EXTRAE
-    Extrae_event(3000, 0);
+    Extrae_event(5000, 0);
 #endif
     double tiempo_fase3_ms = std::chrono::duration<double, std::milli>(t_fin_fase3 - t_inicio_fase3).count();
     
